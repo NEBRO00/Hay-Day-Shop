@@ -1,10 +1,3 @@
-/* ===================================================================
-   DB LAYER — เก็บข้อมูลร้านทั้งหมดบน Supabase (ตาราง app_state)
-   แทนที่ localStorage เดิม โดยคงหน้าตา API เดิม (load/save) ไว้
-   เพื่อให้ app.js ทั้งไฟล์เรียกใช้ได้เหมือนเดิม แต่ข้อมูลจริงอยู่บนคลาวด์
-   และ sync แบบ Real-time ให้ทุกเครื่องที่เปิดเว็บอยู่ผ่าน Supabase Realtime
-=================================================================== */
-
 const TABLE_NAME = 'app_state';
 
 const DB_KEYS = {
@@ -13,7 +6,7 @@ const DB_KEYS = {
   orders: 'hd_orders',
   categories: 'hd_categories',
   settings: 'hd_settings',
-  theme: 'hd_theme', // เก็บใน localStorage เท่านั้น (ค่า UI ล้วนๆ ไม่ต้อง sync)
+  theme: 'hd_theme',
 };
 
 const DEFAULT_CATEGORIES = [
@@ -55,14 +48,93 @@ const DEFAULT_VALUES = {
 };
 
 const SYNCED_KEYS = Object.values(DB_KEYS).filter(k => k !== DB_KEYS.theme);
-
 const _cache = {};
 let _dbReady = false;
 
 function deepClone(v) { return v === undefined ? v : JSON.parse(JSON.stringify(v)); }
-
 function load(key, fallback) {
   if (key === DB_KEYS.theme) {
-    try { return
+    try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+  }
+  const v = _cache[key];
+  return v !== undefined ? deepClone(v) : fallback;
+}
+
+function save(key, val) {
+  if (key === DB_KEYS.theme) {
+    try { localStorage.setItem(key, val); } catch (e) { console.error('theme save error', e); }
+    return;
+  }
+  _cache[key] = deepClone(val);
+  supabaseClient
+    .from(TABLE_NAME)
+    .upsert({ key, value: val, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    .then(({ error }) => {
+      if (error) {
+        console.error('บันทึกข้อมูลขึ้น Supabase ไม่สำเร็จ', key, error);
+        notifyDbError(error);
+      }
+    });
+}
+
+function notifyDbError(error) {
+  window.dispatchEvent(new CustomEvent('db:error', { detail: error }));
+}
+
+async function initDB() {
+  const { data, error } = await supabaseClient.from(TABLE_NAME).select('key,value');
+  if (error) {
+    notifyDbError(error);
+    throw error;
+  }
+
+  const found = new Map((data || []).map(row => [row.key, row.value]));
+  const missing = [];
+
+  SYNCED_KEYS.forEach(key => {
+    if (found.has(key)) {
+      _cache[key] = found.get(key);
+    } else {
+      _cache[key] = deepClone(DEFAULT_VALUES[key]);
+      missing.push({ key, value: _cache[key] });
+    }
+  });
+
+  if (missing.length) {
+    const { error: seedError } = await supabaseClient
+      .from(TABLE_NAME)
+      .upsert(missing.map(m => ({ key: m.key, value: m.value, updated_at: new Date().toISOString() })), { onConflict: 'key' });
+    if (seedError) { console.error('seed error', seedError); notifyDbError(seedError); }
+  }
+
+  subscribeRealtime();
+  _dbReady = true;
+}
+
+function subscribeRealtime() {
+  supabaseClient
+    .channel('app_state_realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE_NAME }, payload => {
+      const row = payload.new && Object.keys(payload.new).length ? payload.new : payload.old;
+      if (!row || !row.key) return;
+
+      if (payload.eventType === 'DELETE') {
+        _cache[row.key] = deepClone(DEFAULT_VALUES[row.key] ?? null);
+      } else {
+        _cache[row.key] = payload.new.value;
+      }
+      window.dispatchEvent(new CustomEvent('db:change', { detail: { key: row.key } }));
+    })
+    .subscribe(status => {
+      window.dispatchEvent(new CustomEvent('db:realtime-status', { detail: status }));
+    });
+}
+
+function isDbReady() { return _dbReady; }
+
+function resetAllData() {
+  SYNCED_KEYS.forEach(key => {
+    const fresh = key === DB_KEYS.products ? deepClone(DEFAULT_PRODUCTS) : deepClone(DEFAULT_VALUES[key]);
+    save(key, fresh);
   });
 }
