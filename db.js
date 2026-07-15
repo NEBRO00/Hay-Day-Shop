@@ -56,102 +56,11 @@ const DEFAULT_VALUES = {
 
 const SYNCED_KEYS = Object.values(DB_KEYS).filter(k => k !== DB_KEYS.theme);
 
-// ในหน่วยความจำ = สำเนาล่าสุดจาก Supabase (ไม่ใช่แหล่งข้อมูลจริง แค่แคชไว้ให้ UI อ่านเร็ว)
 const _cache = {};
 let _dbReady = false;
 
 function deepClone(v) { return v === undefined ? v : JSON.parse(JSON.stringify(v)); }
 
-/* ---------------------- PUBLIC API (หน้าตาเหมือน localStorage เดิม) ---------------------- */
-// อ่านข้อมูล: คืนสำเนาจากแคช (แก้ไข object ที่ได้โดยไม่กระทบข้อมูลจริงจนกว่าจะเรียก save)
 function load(key, fallback) {
   if (key === DB_KEYS.theme) {
-    try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
-  }
-  const v = _cache[key];
-  return v !== undefined ? deepClone(v) : fallback;
-}
-
-// บันทึกข้อมูล: อัปเดตแคชทันที (UI ลื่นไม่ต้องรอเน็ต) แล้วค่อยส่งขึ้น Supabase เบื้องหลัง
-function save(key, val) {
-  if (key === DB_KEYS.theme) {
-    try { localStorage.setItem(key, val); } catch (e) { console.error('theme save error', e); }
-    return;
-  }
-  _cache[key] = deepClone(val);
-  supabaseClient
-    .from(TABLE_NAME)
-    .upsert({ key, value: val, updated_at: new Date().toISOString() }, { onConflict: 'key' })
-    .then(({ error }) => {
-      if (error) {
-        console.error('บันทึกข้อมูลขึ้น Supabase ไม่สำเร็จ', key, error);
-        notifyDbError(error);
-      }
-    });
-}
-
-function notifyDbError(error) {
-  window.dispatchEvent(new CustomEvent('db:error', { detail: error }));
-}
-
-/* ---------------------- INIT: โหลดข้อมูลทั้งหมดจาก Supabase ครั้งแรก ---------------------- */
-async function initDB() {
-  const { data, error } = await supabaseClient.from(TABLE_NAME).select('key,value');
-  if (error) {
-    notifyDbError(error);
-    throw error;
-  }
-
-  const found = new Map((data || []).map(row => [row.key, row.value]));
-  const missing = [];
-
-  SYNCED_KEYS.forEach(key => {
-    if (found.has(key)) {
-      _cache[key] = found.get(key);
-    } else {
-      _cache[key] = deepClone(DEFAULT_VALUES[key]);
-      missing.push({ key, value: _cache[key] });
-    }
-  });
-
-  // ครั้งแรกที่ไม่มีข้อมูลในฐานข้อมูลเลย ให้ seed ค่าเริ่มต้นขึ้นไปเก็บไว้
-  if (missing.length) {
-    const { error: seedError } = await supabaseClient
-      .from(TABLE_NAME)
-      .upsert(missing.map(m => ({ key: m.key, value: m.value, updated_at: new Date().toISOString() })), { onConflict: 'key' });
-    if (seedError) { console.error('seed error', seedError); notifyDbError(seedError); }
-  }
-
-  subscribeRealtime();
-  _dbReady = true;
-}
-
-/* ---------------------- REALTIME: ทุกเครื่องอัปเดตอัตโนมัติเมื่อมีการเปลี่ยนแปลง ---------------------- */
-function subscribeRealtime() {
-  supabaseClient
-    .channel('app_state_realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE_NAME }, payload => {
-      const row = payload.new && Object.keys(payload.new).length ? payload.new : payload.old;
-      if (!row || !row.key) return;
-
-      if (payload.eventType === 'DELETE') {
-        _cache[row.key] = deepClone(DEFAULT_VALUES[row.key] ?? null);
-      } else {
-        _cache[row.key] = payload.new.value;
-      }
-      window.dispatchEvent(new CustomEvent('db:change', { detail: { key: row.key } }));
-    })
-    .subscribe(status => {
-      window.dispatchEvent(new CustomEvent('db:realtime-status', { detail: status }));
-    });
-}
-
-function isDbReady() { return _dbReady; }
-
-// ล้างข้อมูลทั้งหมดกลับเป็นค่าเริ่มต้น แล้วเขียนทับบนคลาวด์ (ทุกเครื่องจะเห็นค่าใหม่ผ่าน Realtime)
-function resetAllData() {
-  SYNCED_KEYS.forEach(key => {
-    const fresh = key === DB_KEYS.products ? deepClone(DEFAULT_PRODUCTS) : deepClone(DEFAULT_VALUES[key]);
-    save(key, fresh);
-  });
-}
+    try { return
