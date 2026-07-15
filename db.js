@@ -1,3 +1,10 @@
+/* ===================================================================
+   DB LAYER — เก็บข้อมูลร้านทั้งหมดบน Supabase (ตาราง app_state)
+   แทนที่ localStorage เดิม โดยคงหน้าตา API เดิม (load/save) ไว้
+   เพื่อให้ app.js ทั้งไฟล์เรียกใช้ได้เหมือนเดิม แต่ข้อมูลจริงอยู่บนคลาวด์
+   และ sync แบบ Real-time ให้ทุกเครื่องที่เปิดเว็บอยู่ผ่าน Supabase Realtime
+=================================================================== */
+
 const TABLE_NAME = 'app_state';
 
 const DB_KEYS = {
@@ -6,7 +13,7 @@ const DB_KEYS = {
   orders: 'hd_orders',
   categories: 'hd_categories',
   settings: 'hd_settings',
-  theme: 'hd_theme',
+  theme: 'hd_theme', // เก็บใน localStorage เท่านั้น (ค่า UI ล้วนๆ ไม่ต้อง sync)
 };
 
 const DEFAULT_CATEGORIES = [
@@ -48,10 +55,15 @@ const DEFAULT_VALUES = {
 };
 
 const SYNCED_KEYS = Object.values(DB_KEYS).filter(k => k !== DB_KEYS.theme);
+
+// ในหน่วยความจำ = สำเนาล่าสุดจาก Supabase (ไม่ใช่แหล่งข้อมูลจริง แค่แคชไว้ให้ UI อ่านเร็ว)
 const _cache = {};
 let _dbReady = false;
 
 function deepClone(v) { return v === undefined ? v : JSON.parse(JSON.stringify(v)); }
+
+/* ---------------------- PUBLIC API (หน้าตาเหมือน localStorage เดิม) ---------------------- */
+// อ่านข้อมูล: คืนสำเนาจากแคช (แก้ไข object ที่ได้โดยไม่กระทบข้อมูลจริงจนกว่าจะเรียก save)
 function load(key, fallback) {
   if (key === DB_KEYS.theme) {
     try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -60,6 +72,7 @@ function load(key, fallback) {
   return v !== undefined ? deepClone(v) : fallback;
 }
 
+// บันทึกข้อมูล: อัปเดตแคชทันที (UI ลื่นไม่ต้องรอเน็ต) แล้วค่อยส่งขึ้น Supabase เบื้องหลัง
 function save(key, val) {
   if (key === DB_KEYS.theme) {
     try { localStorage.setItem(key, val); } catch (e) { console.error('theme save error', e); }
@@ -81,6 +94,7 @@ function notifyDbError(error) {
   window.dispatchEvent(new CustomEvent('db:error', { detail: error }));
 }
 
+/* ---------------------- INIT: โหลดข้อมูลทั้งหมดจาก Supabase ครั้งแรก ---------------------- */
 async function initDB() {
   const { data, error } = await supabaseClient.from(TABLE_NAME).select('key,value');
   if (error) {
@@ -100,6 +114,7 @@ async function initDB() {
     }
   });
 
+  // ครั้งแรกที่ไม่มีข้อมูลในฐานข้อมูลเลย ให้ seed ค่าเริ่มต้นขึ้นไปเก็บไว้
   if (missing.length) {
     const { error: seedError } = await supabaseClient
       .from(TABLE_NAME)
@@ -111,6 +126,7 @@ async function initDB() {
   _dbReady = true;
 }
 
+/* ---------------------- REALTIME: ทุกเครื่องอัปเดตอัตโนมัติเมื่อมีการเปลี่ยนแปลง ---------------------- */
 function subscribeRealtime() {
   supabaseClient
     .channel('app_state_realtime')
@@ -132,6 +148,7 @@ function subscribeRealtime() {
 
 function isDbReady() { return _dbReady; }
 
+// ล้างข้อมูลทั้งหมดกลับเป็นค่าเริ่มต้น แล้วเขียนทับบนคลาวด์ (ทุกเครื่องจะเห็นค่าใหม่ผ่าน Realtime)
 function resetAllData() {
   SYNCED_KEYS.forEach(key => {
     const fresh = key === DB_KEYS.products ? deepClone(DEFAULT_PRODUCTS) : deepClone(DEFAULT_VALUES[key]);
