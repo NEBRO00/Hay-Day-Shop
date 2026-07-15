@@ -64,3 +64,5 @@ function deepClone(v) { return v === undefined ? v : JSON.parse(JSON.stringify(v
 function load(key, fallback) {
   if (key === DB_KEYS.theme) {
     try { return
+  });
+}
