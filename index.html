@@ -1,1 +1,392 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌾 SinaShop — ร้านค้า Hay Day</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700;800&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
 
+<!-- ===== DB CONNECTING / ERROR OVERLAYS ===== -->
+<div class="modal-backdrop" id="dbLoading">
+  <div class="modal login-box">
+    <div class="login-emoji">🌐🌾</div>
+    <h2>กำลังเชื่อมต่อฐานข้อมูล...</h2>
+    <p>กำลังดึงข้อมูลร้านค้าล่าสุดจากคลาวด์</p>
+  </div>
+</div>
+<div class="modal-backdrop hidden" id="dbError">
+  <div class="modal login-box">
+    <div class="login-emoji">⚠️</div>
+    <h2>เชื่อมต่อฐานข้อมูลไม่สำเร็จ</h2>
+    <p>ตรวจสอบการตั้งค่า SUPABASE_URL / SUPABASE_ANON_KEY ในไฟล์ supabaseClient.js และการเชื่อมต่ออินเทอร์เน็ต แล้วรีเฟรชหน้าใหม่</p>
+  </div>
+</div>
+
+<!-- ===== UNLOCK MODAL (only shown when opening a protected section) ===== -->
+<div class="modal-backdrop hidden" id="unlockBackdrop">
+  <div class="modal login-box">
+    <div class="login-emoji">🔒🌾</div>
+    <h2>ส่วนนี้ล็อกไว้</h2>
+    <p>สำหรับเจ้าของร้านเท่านั้น ใส่รหัสผ่านเพื่อเข้าใช้งาน</p>
+    <form id="unlockForm">
+      <input type="email" id="unlockEmail" placeholder="อีเมล" autocomplete="username">
+      <input type="password" id="unlockPassword" placeholder="รหัสผ่าน" autocomplete="current-password">
+      <label class="remember-row">
+        <input type="checkbox" id="unlockRemember" checked> จดจำการปลดล็อกบนอุปกรณ์นี้
+      </label>
+      <div class="modal-actions" style="justify-content:center">
+        <button type="button" class="btn-secondary" id="unlockCancelBtn">ยกเลิก</button>
+        <button type="submit" class="btn-primary">🔓 ปลดล็อก</button>
+      </div>
+      <p class="login-error hidden" id="unlockError">รหัสผ่านไม่ถูกต้อง ลองอีกครั้งนะ</p>
+    </form>
+  </div>
+</div>
+
+<div class="app" id="app">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-emoji">🌾</span>
+      <div class="brand-text">
+        <strong>SinaShop</strong>
+        <small>ร้านค้า Hay Day</small>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-btn active" data-view="pos"><span>🛒</span>ขายสินค้า</button>
+
+      <button class="nav-btn enter-admin-btn" id="enterAdminBtn"><span>🔑</span>เข้าสู่ระบบร้านค้า</button>
+
+      <div class="admin-nav-group" id="adminNavGroup">
+        <button class="nav-btn" data-view="dashboard"><span>🏠</span>แดชบอร์ด</button>
+        <button class="nav-btn" data-view="orders"><span>📜</span>ประวัติออเดอร์</button>
+        <button class="nav-btn" data-view="customers"><span>👥</span>ลูกค้า</button>
+        <button class="nav-btn" data-view="products"><span>📦</span>จัดการสินค้า</button>
+        <button class="nav-btn" data-view="reports"><span>📈</span>รายงาน</button>
+        <button class="nav-btn" data-view="settings"><span>⚙️</span>ตั้งค่า</button>
+      </div>
+    </nav>
+
+    <button class="theme-toggle" id="themeToggle" title="สลับโหมดกลางวัน/กลางคืน">
+      <span id="themeIcon">🌙</span> <span id="themeLabel">โหมดกลางคืน</span>
+    </button>
+    <button class="logout-btn hidden" id="logoutBtn" title="ล็อกส่วนหลังบ้านอีกครั้ง">🔒 ล็อกระบบ</button>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ===== MAIN ===== -->
+  <div class="main">
+    <header class="topbar">
+      <button class="hamburger" id="hamburger">☰</button>
+      <h1 id="pageTitle">ขายสินค้า</h1>
+      <div class="search-wrap">
+        <input type="text" id="globalSearch" placeholder=" ">
+        <div class="search-results" id="searchResults"></div>
+      </div>
+    </header>
+
+    <main class="content" id="content">
+
+      <!-- ===== DASHBOARD ===== -->
+      <section class="view" id="view-dashboard">
+        <div class="signpost"><span>ภาพรวมฟาร์มวันนี้</span></div>
+        <div class="stat-grid">
+          <div class="stat-card sky">
+            <span class="stat-emoji">💰</span>
+            <div><small>ยอดขายวันนี้</small><strong id="statTodaySales">0 บาท</strong></div>
+          </div>
+          <div class="stat-card sun">
+            <span class="stat-emoji">🧾</span>
+            <div><small>ออเดอร์วันนี้</small><strong id="statTodayOrders">0</strong></div>
+          </div>
+          <div class="stat-card grass">
+            <span class="stat-emoji">👥</span>
+            <div><small>ลูกค้าทั้งหมด</small><strong id="statTotalCustomers">0</strong></div>
+          </div>
+          <div class="stat-card berry">
+            <span class="stat-emoji">⭐</span>
+            <div><small>สินค้าขายดี</small><strong id="statBestSeller">-</strong></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="signpost small"><span>ยอดขายรายเดือน</span></div>
+          <div class="chart" id="monthChart"></div>
+        </div>
+
+        <div class="card">
+          <div class="signpost small"><span>ออเดอร์ล่าสุด</span></div>
+          <div class="table-wrap"><table id="recentOrdersTable">
+            <thead><tr><th>วันที่</th><th>ลูกค้า</th><th>จำนวนชิ้น</th><th>ยอดเงิน</th><th>สถานะ</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- ===== POS (ขายสินค้า) ===== -->
+      <section class="view hidden" id="view-pos">
+        <div class="pos-layout">
+          <div class="pos-left">
+            <div class="signpost small"><span>เลือกสินค้า</span></div>
+            <div class="pos-toolbar">
+              <input type="text" id="posSearch" placeholder="🔍 ค้นหาสินค้า...">
+              <select id="posCategoryFilter"></select>
+            </div>
+            <div class="product-grid" id="posProductGrid"></div>
+          </div>
+
+          <div class="pos-right">
+            <div class="signpost small"><span>ข้อมูลลูกค้า</span></div>
+            <div class="card customer-form">
+              <label>ชื่อผู้ซื้อ
+                <input type="text" id="custName" placeholder="พิมพ์ชื่อลูกค้า..." autocomplete="off">
+                <div class="autofill-list" id="custAutofill"></div>
+              </label>
+              <label>Tag ฟาร์ม
+                <input type="text" id="custTag" placeholder="@123456789">
+              </label>
+
+              <div class="cust-history-hint" id="custHistoryHint"></div>
+            </div>
+
+            <div class="signpost small"><span>ตะกร้าสินค้า</span></div>
+            <div class="card cart-card">
+              <div class="cart-list" id="cartList">
+                <p class="empty-hint">ยังไม่มีสินค้าในตะกร้า 🧺</p>
+              </div>
+              <div class="cart-totals">
+                <div><span>รวมจำนวนชิ้น</span><strong id="cartTotalItems">0</strong></div>
+                <div><span>รวมเงิน</span><strong id="cartTotalPrice">0 บาท</strong></div>
+              </div>
+              <button class="btn-primary big" id="confirmOrderBtn">✅ ยืนยันออเดอร์</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ORDER MESSAGE MODAL ===== -->
+      <div class="modal-backdrop hidden" id="msgModalBackdrop">
+        <div class="modal receipt">
+          <div class="signpost small"><span>ใบสั่งซื้อ</span></div>
+          <pre id="orderMessageText"></pre>
+          <div id="promptpayPreview" class="promptpay-preview hidden">
+            <small>QR PromptPay</small>
+            <img id="promptpayImg" alt="PromptPay QR">
+          </div>
+          <div class="modal-actions">
+            <button class="btn-secondary" id="copyMsgBtn">📋 Copy</button>
+            <button class="btn-secondary" id="downloadMsgBtn">⬇️ ดาวน์โหลด</button>
+            <button class="btn-secondary" id="shareMsgBtn">📤 แชร์</button>
+            <button class="btn-primary" id="closeMsgBtn">เสร็จสิ้น</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ORDERS HISTORY ===== -->
+      <section class="view hidden" id="view-orders">
+        <div class="signpost"><span>ประวัติคำสั่งซื้อ</span></div>
+        <div class="card">
+          <div class="pos-toolbar">
+            <input type="text" id="orderSearch" placeholder="🔍 ค้นหาชื่อลูกค้า / Tag...">
+            <select id="orderStatusFilter">
+              <option value="">ทุกสถานะ</option>
+              <option value="รอชำระ">รอชำระ</option>
+              <option value="ชำระแล้ว">ชำระแล้ว</option>
+              <option value="ส่งของแล้ว">ส่งของแล้ว</option>
+              <option value="เสร็จสิ้น">เสร็จสิ้น</option>
+            </select>
+          </div>
+          <div class="table-wrap"><table id="ordersTable">
+            <thead><tr><th>วันที่</th><th>ชื่อลูกค้า</th><th>Tag</th><th>จำนวนสินค้า</th><th>ยอดเงิน</th><th>สถานะ</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <div class="modal-backdrop hidden" id="orderDetailBackdrop">
+        <div class="modal">
+          <div class="signpost small"><span>รายละเอียดออเดอร์</span></div>
+          <div id="orderDetailBody"></div>
+          <div class="modal-actions">
+            <button class="btn-primary" id="closeOrderDetailBtn">ปิด</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CUSTOMERS ===== -->
+      <section class="view hidden" id="view-customers">
+        <div class="signpost"><span>ลูกค้า & ลูกค้าประจำ</span></div>
+        <div class="card">
+          <input type="text" id="customerSearch" placeholder="🔍 ค้นหาด้วยชื่อ หรือ Tag ฟาร์ม...">
+        </div>
+        <div class="customer-grid" id="customerGrid"></div>
+      </section>
+
+      <div class="modal-backdrop hidden" id="customerDetailBackdrop">
+        <div class="modal">
+          <div class="signpost small"><span>สถิติลูกค้า</span></div>
+          <div id="customerDetailBody"></div>
+          <div class="modal-actions">
+            <button class="btn-primary" id="closeCustomerDetailBtn">ปิด</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PRODUCTS ADMIN ===== -->
+      <section class="view hidden" id="view-products">
+        <div class="signpost"><span>จัดการสินค้า</span></div>
+        <div class="card product-form">
+          <input type="hidden" id="prodId">
+          <label class="photo-field">
+            รูปสินค้าจริง (อัปโหลด)
+            <input type="file" id="prodPhotoUpload" accept="image/*">
+            <div class="photo-preview-row">
+              <img id="prodPhotoPreview" class="hidden" alt="ตัวอย่างรูปสินค้า">
+              <button type="button" class="row-btn danger hidden" id="removeProdPhotoBtn">ลบรูป</button>
+            </div>
+          </label>
+          <label>Emoji สำรอง (ใช้ถ้าไม่มีรูป)<input type="text" id="prodImage" placeholder="🍌" maxlength="4"></label>
+          <label>ชื่อสินค้า<input type="text" id="prodName" placeholder="กล้วย"></label>
+          <label>ราคา<input type="number" id="prodPrice" placeholder="5" min="0" step="0.01"></label>
+          <label>หมวดหมู่
+            <select id="prodCategory"></select>
+          </label>
+          <label>จำนวนคงเหลือ<input type="number" id="prodStock" placeholder="100" min="0"></label>
+          <div class="form-actions">
+            <button class="btn-primary" id="saveProductBtn">💾 บันทึกสินค้า</button>
+            <button class="btn-secondary hidden" id="cancelEditProductBtn">ยกเลิก</button>
+          </div>
+          <p class="hint-text photo-note">💡 ลิขสิทธิ์รูปในเกม Hay Day เป็นของ Supercell เราจึงใส่ให้อัตโนมัติไม่ได้ — อัปโหลดรูปที่แคปจากเกมของคุณเองได้เลยที่นี่ ระบบจะใช้แทน emoji ทันที</p>
+        </div>
+
+        <div class="pos-toolbar">
+          <input type="text" id="adminProductSearch" placeholder="🔍 ค้นหาสินค้า...">
+          <select id="adminCategoryFilter"></select>
+        </div>
+        <div class="table-wrap"><table id="productsTable">
+          <thead><tr><th></th><th>ชื่อ</th><th>หมวดหมู่</th><th>ราคา</th><th>คงเหลือ</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </section>
+
+      <!-- ===== REPORTS ===== -->
+      <section class="view hidden" id="view-reports">
+        <div class="signpost"><span>รายงาน</span></div>
+        <div class="report-tabs">
+          <button class="chip active" data-range="day">รายวัน</button>
+          <button class="chip" data-range="month">รายเดือน</button>
+          <button class="chip" data-range="year">รายปี</button>
+        </div>
+        <div class="card">
+          <div class="chart" id="reportChart"></div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="signpost small"><span>สินค้าขายดี</span></div>
+            <ol id="reportBestSellers" class="ranked-list"></ol>
+          </div>
+          <div class="card">
+            <div class="signpost small"><span>ลูกค้าประจำ</span></div>
+            <ol id="reportRegulars" class="ranked-list"></ol>
+          </div>
+        </div>
+        <div class="card">
+          <div class="signpost small"><span>ส่งออกข้อมูล (Export)</span></div>
+          <div class="export-row">
+            <button class="btn-secondary" id="exportOrdersCsv">📁 ออเดอร์ (CSV)</button>
+            <button class="btn-secondary" id="exportCustomersCsv">📁 ลูกค้า (CSV)</button>
+            <button class="btn-secondary" id="exportProductsCsv">📁 สินค้า (CSV)</button>
+            <button class="btn-secondary" id="exportPdfReport">📁 รายงาน (PDF พิมพ์)</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== SETTINGS ===== -->
+      <section class="view hidden" id="view-settings">
+        <div class="signpost"><span>ตั้งค่า</span></div>
+
+        <div class="card">
+          <div class="signpost small"><span>🔒 รหัสผ่านเข้าระบบ</span></div>
+          <p class="hint-text">เปลี่ยนรหัสผ่านสำหรับเข้าหน้าหลังบ้าน (ป้องกันไม่ให้คนอื่นเข้ามาเห็นระบบ)</p>
+          <div class="password-form">
+            <input type="password" id="currentPassword" placeholder="รหัสผ่านปัจจุบัน" autocomplete="current-password">
+            <input type="password" id="newPassword" placeholder="รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)" autocomplete="new-password">
+            <input type="password" id="confirmPassword" placeholder="ยืนยันรหัสผ่านใหม่" autocomplete="new-password">
+            <button class="btn-primary" id="changePasswordBtn">💾 เปลี่ยนรหัสผ่าน</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="signpost small"><span>📤 หน้าร้านสำหรับลูกค้า</span></div>
+          <p class="hint-text">
+            หน้านี้ (ระบบหลังบ้าน) มีไว้ให้คุณคนเดียวเท่านั้น ห้ามส่งลิงก์/ไฟล์นี้ให้ลูกค้า —
+            กดปุ่มด้านล่างเพื่อสร้าง <strong>ไฟล์แยกต่างหาก</strong> เป็นหน้าคาตาล็อกดูสินค้าอย่างเดียว
+            (ไม่มีระบบหลังบ้าน ไม่ต้องล็อกอิน) ไว้ส่งให้ลูกค้าดูสินค้าและสร้างข้อความสั่งซื้อส่งกลับมาหาคุณเอง
+          </p>
+          <label class="settings-field">ชื่อร้าน (แสดงในหน้าคาตาล็อก)
+            <input type="text" id="shopNameInput" placeholder="SinaShop">
+          </label>
+          <label class="settings-field">ช่องทางติดต่อสั่งซื้อ (LINE / Discord / เบอร์โทร ฯลฯ)
+            <input type="text" id="shopContactInput" placeholder="เช่น LINE: @farmyshop หรือ Discord: farmy#1234">
+          </label>
+          <div class="export-row">
+            <button class="btn-secondary" id="previewCatalogBtn">👁️ ดูตัวอย่างหน้าร้าน</button>
+            <button class="btn-primary" id="downloadCatalogBtn">⬇️ ดาวน์โหลดไฟล์หน้าร้าน (catalog.html)</button>
+          </div>
+          <p class="hint-text">
+            ไฟล์นี้เป็น <strong>ภาพนิ่ง (snapshot)</strong> ของสินค้า ณ ตอนที่กดดาวน์โหลด — เมื่อแก้ราคา/สต๊อก/เพิ่มสินค้าใหม่
+            ต้องกดดาวน์โหลดใหม่แล้วอัปโหลดทับไฟล์เดิมบนที่ที่คุณฝากไว้ (เช่น GitHub Pages, Netlify Drop, Google Sites)
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="signpost small"><span>หมวดหมู่สินค้า</span></div>
+          <div class="cat-manage-row">
+            <input type="text" id="newCatEmoji" placeholder="🌾" maxlength="4" style="max-width:70px">
+            <input type="text" id="newCatName" placeholder="ชื่อหมวดหมู่ใหม่">
+            <button class="btn-primary" id="addCatBtn">+ เพิ่มหมวดหมู่</button>
+          </div>
+          <div class="cat-chips" id="settingsCatList"></div>
+        </div>
+
+        <div class="card">
+          <div class="signpost small"><span>PromptPay QR</span></div>
+          <p class="hint-text">แนบรูป QR PromptPay ของคุณ เพื่อแสดงในใบสั่งซื้อทุกครั้ง</p>
+          <input type="file" id="qrUpload" accept="image/*">
+          <div id="qrCurrentPreview"></div>
+          <button class="btn-secondary" id="removeQrBtn">ลบ QR</button>
+        </div>
+
+        <div class="card">
+          <div class="signpost small"><span>สำรองข้อมูล</span></div>
+          <div class="export-row">
+            <button class="btn-secondary" id="backupBtn">⬇️ ดาวน์โหลดข้อมูลสำรอง (JSON)</button>
+            <label class="btn-secondary file-label">⬆️ นำเข้าข้อมูลสำรอง
+              <input type="file" id="restoreInput" accept="application/json" hidden>
+            </label>
+            <button class="btn-danger" id="resetDataBtn">🗑️ ล้างข้อมูลทั้งหมด</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+    <footer class="footnote">🌱 SinaShop — ข้อมูลทั้งหมดซิงค์แบบเรียลไทม์ผ่านฐานข้อมูลคลาวด์ (Supabase)</footer>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="supabaseClient.js"></script>
+<script src="db.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
