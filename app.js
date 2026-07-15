@@ -244,9 +244,24 @@ function renderBars(containerId, data) {
    POS — ขายสินค้า
 ===================================================================== */
 function renderPOS() {
+  renderCategoryChips();
   populateCategorySelect(document.getElementById('posCategoryFilter'), true);
   renderPosProducts();
   renderCart();
+}
+
+function renderCategoryChips() {
+  const cats = load(DB_KEYS.categories, []);
+  const wrap = document.getElementById('catChips');
+  wrap.innerHTML = `<button class="chip ${state.posCategoryFilter === '' ? 'active' : ''}" data-cat="">ทั้งหมด</button>` +
+    cats.map(c => `<button class="chip ${state.posCategoryFilter === c.id ? 'active' : ''}" data-cat="${c.id}">${c.emoji} ${esc(c.name)}</button>`).join('');
+  wrap.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      state.posCategoryFilter = chip.dataset.cat;
+      document.getElementById('posCategoryFilter').value = chip.dataset.cat;
+      renderPosProducts();
+    });
+  });
 }
 
 function populateCategorySelect(select, withAll) {
@@ -263,6 +278,7 @@ document.getElementById('posSearch').addEventListener('input', e => {
 });
 document.getElementById('posCategoryFilter').addEventListener('change', e => {
   state.posCategoryFilter = e.target.value;
+  renderCategoryChips();
   renderPosProducts();
 });
 
@@ -296,9 +312,8 @@ function addToCart(productId) {
   const existing = state.cart.find(c => c.productId === productId);
   const inCartQty = existing ? existing.qty : 0;
   if (inCartQty + 1 > product.stock) { toast('⚠️ สินค้าคงเหลือไม่พอ'); return; }
-  const cat = categoryById(product.category);
   if (existing) existing.qty += 1;
-  else state.cart.push({ productId, name: product.name, image: product.image, photo: product.photo, price: product.price, qty: 1, categoryName: cat ? cat.name : '', categoryEmoji: cat ? cat.emoji : '' });
+  else state.cart.push({ productId, name: product.name, image: product.image, photo: product.photo, price: product.price, qty: 1 });
   renderCart();
   toast(`เพิ่ม ${product.image || ''} ${product.name} ลงตะกร้าแล้ว`);
 }
@@ -313,7 +328,7 @@ function renderCart() {
         ${thumbHtml(c, 'cart-thumb-img')}
         <div class="c-info">
           <div class="c-name">${esc(c.name)}</div>
-          <div class="c-price">${money(c.price)} / ชิ้น${c.categoryName ? ` · ${c.categoryEmoji || ''} ${esc(c.categoryName)}` : ''}</div>
+          <div class="c-price">${money(c.price)} / ชิ้น</div>
         </div>
         <div class="qty-ctrl">
           <button class="qty-minus" aria-label="ลดจำนวน">−</button>
@@ -427,7 +442,7 @@ function confirmOrder() {
   save(DB_KEYS.customers, customers);
 
   const products = load(DB_KEYS.products, []);
-  const items = state.cart.map(c => ({ productId: c.productId, name: c.name, image: c.image, photo: c.photo, price: c.price, qty: c.qty, categoryName: c.categoryName, categoryEmoji: c.categoryEmoji }));
+  const items = state.cart.map(c => ({ productId: c.productId, name: c.name, image: c.image, photo: c.photo, price: c.price, qty: c.qty }));
   items.forEach(it => {
     const p = products.find(p => p.id === it.productId);
     if (p) p.stock = Math.max(0, p.stock - it.qty);
@@ -559,8 +574,8 @@ function showOrderDetail(orderId) {
     <p><strong>ลูกค้า:</strong> ${esc(o.customerName)} · <strong>Tag:</strong> ${esc(o.farmTag || '-')}</p>
     <p><strong>วันที่:</strong> ${fmtDateTime(o.createdAt)} · <strong>สถานะ:</strong> <span class="status-badge status-${o.status}">${o.status}</span></p>
     <div class="table-wrap"><table>
-      <thead><tr><th></th><th>สินค้า</th><th>หมวดหมู่</th><th>จำนวน</th><th>ราคา/ชิ้น</th><th>รวม</th></tr></thead>
-      <tbody>${o.items.map(it => `<tr><td>${thumbHtml(it, 'table-thumb-img')}</td><td>${esc(it.name)}</td><td>${it.categoryName ? `${it.categoryEmoji || ''} ${esc(it.categoryName)}` : '-'}</td><td>${it.qty}</td><td>${money(it.price)}</td><td>${money(it.qty * it.price)}</td></tr>`).join('')}</tbody>
+      <thead><tr><th></th><th>สินค้า</th><th>จำนวน</th><th>ราคา/ชิ้น</th><th>รวม</th></tr></thead>
+      <tbody>${o.items.map(it => `<tr><td>${thumbHtml(it, 'table-thumb-img')}</td><td>${esc(it.name)}</td><td>${it.qty}</td><td>${money(it.price)}</td><td>${money(it.qty * it.price)}</td></tr>`).join('')}</tbody>
     </table></div>
     <p style="text-align:right;margin-top:10px"><strong>รวมทั้งหมด ${o.totalItems} ชิ้น — ${money(o.totalPrice)}</strong></p>`;
   document.getElementById('orderDetailBackdrop').classList.remove('hidden');
