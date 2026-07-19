@@ -138,15 +138,19 @@ function subscribeRealtime() {
       const row = payload.new && Object.keys(payload.new).length ? payload.new : payload.old;
       if (!row || !row.key) return;
 
+      // ถ้าเพิ่งเขียนคีย์นี้เองจากเครื่องนี้ไม่เกิน 4 วิ = แคชในเครื่องถูกต้อง/ใหม่กว่าอยู่แล้ว
+      // ข้ามทั้งการเขียนทับแคชและการ re-render กัน "echo" ที่มาช้า/ไม่ครบ (โดยเฉพาะแถวที่มีรูปภาพ
+      // แนบขนาดใหญ่) ทับข้อมูลที่ถูกต้องทิ้งจนตารางว่างเปล่าไปจนกว่าจะรีเฟรชหน้า
+      const lastLocalWrite = _recentLocalWrites.get(row.key) || 0;
+      if (Date.now() - lastLocalWrite < 4000) return;
+
       if (payload.eventType === 'DELETE') {
         _cache[row.key] = deepClone(DEFAULT_VALUES[row.key] ?? null);
-      } else {
+      } else if (payload.new && payload.new.value !== undefined) {
         _cache[row.key] = payload.new.value;
+      } else {
+        return; // payload ไม่สมบูรณ์ — ไม่เขียนทับแคชด้วยค่าที่อาจไม่ครบ
       }
-
-      // ถ้าเพิ่งเขียนคีย์นี้เองจากเครื่องนี้ไม่เกิน 2 วิ = UI แสดงข้อมูลล่าสุดอยู่แล้ว ไม่ต้อง re-render ซ้ำ
-      const lastLocalWrite = _recentLocalWrites.get(row.key) || 0;
-      if (Date.now() - lastLocalWrite < 2000) return;
 
       window.dispatchEvent(new CustomEvent('db:change', { detail: { key: row.key } }));
     })
