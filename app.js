@@ -728,7 +728,7 @@ document.getElementById('prodPhotoUpload').addEventListener('change', async e =>
   if (!file) return;
   toast('⏳ กำลังบีบอัดรูป...');
   try {
-    const dataUrl = await compressImageFile(file, 900, 0.72);
+    const dataUrl = await compressImageFile(file, 900, 0.85, 'image/png');
     state.pendingProductPhoto = dataUrl;
     setProductPhotoPreview(dataUrl);
   } catch (err) {
@@ -1078,4 +1078,3 @@ window.addEventListener('db:error', e => {
     if (dbErrorEl) dbErrorEl.classList.remove('hidden');
   }
 })();
- 
