@@ -742,15 +742,15 @@ document.getElementById('removeProdPhotoBtn').addEventListener('click', () => {
   setProductPhotoPreview(null);
 });
  
-function deleteProduct(id) {
+async function deleteProduct(id) {
   if (!confirm('ลบสินค้านี้ใช่หรือไม่?')) return;
-  const products = load(DB_KEYS.products, []).filter(p => p.id !== id);
+  const products = (await loadFresh(DB_KEYS.products, [])).filter(p => p.id !== id);
   save(DB_KEYS.products, products);
   toast('🗑️ ลบสินค้าแล้ว');
   renderProductsTable();
 }
  
-document.getElementById('saveProductBtn').addEventListener('click', () => {
+document.getElementById('saveProductBtn').addEventListener('click', async () => {
   const id = document.getElementById('prodId').value;
   const image = document.getElementById('prodImage').value.trim() || '📦';
   const name = document.getElementById('prodName').value.trim();
@@ -763,10 +763,11 @@ document.getElementById('saveProductBtn').addEventListener('click', () => {
   if (isNaN(stock) || stock < 0) { toast('⚠️ จำนวนคงเหลือไม่ถูกต้อง'); return; }
  
   const photo = state.pendingProductPhoto;
-  const products = load(DB_KEYS.products, []);
+  const products = await loadFresh(DB_KEYS.products, []);
   if (id) {
     const p = products.find(x => x.id === id);
-    Object.assign(p, { image, name, price, category, stock, photo });
+    if (p) Object.assign(p, { image, name, price, category, stock, photo });
+    else products.push({ id, image, name, price, category, stock, photo });
     toast('💾 บันทึกการแก้ไขแล้ว');
   } else {
     products.push({ id: uid('p'), image, name, price, category, stock, photo });
