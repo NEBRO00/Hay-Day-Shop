@@ -7,7 +7,7 @@ function uid(prefix) { return dbUid(prefix); }
  
 // ย่อ/บีบอัดรูปก่อนแปลงเป็น base64 — กันไฟล์รูปจากกล้องมือถือ (มักหลายเมกะไบต์) ทำให้
 // เบราว์เซอร์กินแรมพุ่งจนแท็บ crash/รีโหลดเอง (อาการ "เด้งออกต้องรีเฟรช" ตอนอัปโหลดรูป)
-function compressImageFile(file, maxDim = 900, quality = 0.72, mime = 'image/jpeg') {
+function compressImageFile(file, maxDim = 900, quality = 0.85, mime = 'image/png') {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
@@ -24,12 +24,26 @@ function compressImageFile(file, maxDim = 900, quality = 0.72, mime = 'image/jpe
         canvas.width = width;
         canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL(mime, quality));
+        canvas.toBlob(blob => {
+          if (!blob) { reject(new Error('บีบอัดรูปไม่สำเร็จ')); return; }
+          resolve(blob);
+        }, mime, quality);
       };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
   });
+}
+
+// อัปโหลดไฟล์รูปที่บีบอัดแล้วขึ้น Supabase Storage แล้วคืน URL สาธารณะ
+// (เก็บแค่ URL สั้นๆ ไว้ในฐานข้อมูล แทนการฝังรูปทั้งก้อนเป็น base64 — กัน error 500 ตอนข้อมูลใหญ่เกิน)
+async function uploadProductPhoto(blob, mime = 'image/png') {
+  const ext = mime === 'image/png' ? 'png' : 'jpg';
+  const path = `${dbUid('img')}.${ext}`;
+  const { error } = await supabaseClient.storage.from('product-photos').upload(path, blob, { contentType: mime, upsert: false });
+  if (error) throw error;
+  const { data } = supabaseClient.storage.from('product-photos').getPublicUrl(path);
+  return data.publicUrl;
 }
  
 /* ---------------------- SECTION LOCK (per-view, not whole-app) ---------------------- */
@@ -726,14 +740,16 @@ function setProductPhotoPreview(dataUrl) {
 document.getElementById('prodPhotoUpload').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
-  toast('⏳ กำลังบีบอัดรูป...');
+  toast('⏳ กำลังอัปโหลดรูป...');
   try {
-    const dataUrl = await compressImageFile(file, 900, 0.85, 'image/png');
-    state.pendingProductPhoto = dataUrl;
-    setProductPhotoPreview(dataUrl);
+    const blob = await compressImageFile(file, 900, 0.85, 'image/png');
+    const url = await uploadProductPhoto(blob, 'image/png');
+    state.pendingProductPhoto = url;
+    setProductPhotoPreview(url);
+    toast('✅ อัปโหลดรูปสำเร็จ');
   } catch (err) {
-    console.error('compress product photo error', err);
-    toast('⚠️ โหลดรูปไม่สำเร็จ ลองใหม่หรือเลือกไฟล์อื่น');
+    console.error('upload product photo error', err);
+    toast('⚠️ อัปโหลดรูปไม่สำเร็จ ลองใหม่หรือเลือกไฟล์อื่น');
   }
 });
 document.getElementById('removeProdPhotoBtn').addEventListener('click', () => {
@@ -966,10 +982,12 @@ function deleteCategory(id) {
 document.getElementById('qrUpload').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
+  toast('⏳ กำลังอัปโหลดรูป...');
   try {
-    const dataUrl = await compressImageFile(file, 700, 0.9, 'image/png');
+    const blob = await compressImageFile(file, 700, 0.9, 'image/png');
+    const url = await uploadProductPhoto(blob, 'image/png');
     const settings = load(DB_KEYS.settings, {});
-    settings.promptpayQr = dataUrl;
+    settings.promptpayQr = url;
     save(DB_KEYS.settings, settings);
     toast('✅ บันทึก QR แล้ว');
     renderSettings();
