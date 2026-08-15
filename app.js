@@ -323,12 +323,39 @@ document.getElementById('posCategoryFilter').addEventListener('change', e => {
   renderPosProducts();
 });
  
+/* ยอดขายสะสมต่อสินค้า (นับจากประวัติออเดอร์ทั้งหมด) ใช้จัดลำดับความนิยม — ข้อ 5 */
+function getProductSalesMap() {
+  const orders = load(DB_KEYS.orders, []);
+  const map = {};
+  orders.forEach(o => {
+    (o.items || []).forEach(it => {
+      map[it.productId] = (map[it.productId] || 0) + (it.qty || 0);
+    });
+  });
+  return map;
+}
+
 function renderPosProducts() {
   const products = load(DB_KEYS.products, []);
+  const categories = load(DB_KEYS.categories, []);
+  const catOrder = {};
+  categories.forEach((c, i) => { catOrder[c.id] = i; });
+  const salesMap = getProductSalesMap();
+
   let list = products.filter(p =>
     (!state.posCategoryFilter || p.category === state.posCategoryFilter) &&
     (!state.posSearch || p.name.toLowerCase().includes(state.posSearch))
   );
+
+  // ข้อ 6: จัดกลุ่มสินค้าหมวดเดียวกันไว้ติดกัน (เรียงตามลำดับหมวดหมู่ที่ตั้งไว้)
+  // ข้อ 5: ภายในหมวดเดียวกัน เรียงจากสินค้าที่ลูกค้าเลือก/สั่งมากไปน้อย
+  list = list.slice().sort((a, b) => {
+    const catA = catOrder[a.category] ?? 999;
+    const catB = catOrder[b.category] ?? 999;
+    if (catA !== catB) return catA - catB;
+    return (salesMap[b.id] || 0) - (salesMap[a.id] || 0);
+  });
+
   const grid = document.getElementById('posProductGrid');
   grid.innerHTML = list.length ? list.map(p => {
     const cat = categoryById(p.category);
@@ -548,14 +575,6 @@ document.getElementById('closeMsgBtn').addEventListener('click', () => {
 document.getElementById('copyMsgBtn').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(lastOrderMessage); toast('📋 คัดลอกแล้ว'); }
   catch { toast('⚠️ คัดลอกไม่สำเร็จ'); }
-});
-document.getElementById('downloadMsgBtn').addEventListener('click', () => {
-  const blob = new Blob([lastOrderMessage], { type: 'text/plain;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `order_${Date.now()}.txt`;
-  a.click();
-  toast('⬇️ ดาวน์โหลดแล้ว');
 });
 document.getElementById('shareMsgBtn').addEventListener('click', async () => {
   if (navigator.share) {
