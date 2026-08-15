@@ -133,6 +133,19 @@
 
       <!-- ===== POS (ขายสินค้า) ===== -->
       <section class="view hidden" id="view-pos">
+        <div class="signpost small"><span>ข้อมูลลูกค้า</span></div>
+        <div class="card customer-form">
+          <label>ชื่อผู้ซื้อ
+            <input type="text" id="custName" placeholder="พิมพ์ชื่อลูกค้า..." autocomplete="off">
+            <div class="autofill-list" id="custAutofill"></div>
+          </label>
+          <label>Tag ฟาร์ม
+            <input type="text" id="custTag" placeholder="@123456789">
+          </label>
+
+          <div class="cust-history-hint" id="custHistoryHint"></div>
+        </div>
+
         <div class="pos-layout">
           <div class="pos-left">
             <div class="signpost small"><span>เลือกสินค้า</span></div>
@@ -145,19 +158,6 @@
           </div>
 
           <div class="pos-right">
-            <div class="signpost small"><span>ข้อมูลลูกค้า</span></div>
-            <div class="card customer-form">
-              <label>ชื่อผู้ซื้อ
-                <input type="text" id="custName" placeholder="พิมพ์ชื่อลูกค้า..." autocomplete="off">
-                <div class="autofill-list" id="custAutofill"></div>
-              </label>
-              <label>Tag ฟาร์ม
-                <input type="text" id="custTag" placeholder="@123456789">
-              </label>
-
-              <div class="cust-history-hint" id="custHistoryHint"></div>
-            </div>
-
             <div class="signpost small"><span>ตะกร้าสินค้า</span></div>
             <div class="card cart-card">
               <div class="cart-list" id="cartList">
@@ -178,13 +178,14 @@
         <div class="modal receipt">
           <div class="signpost small"><span>ใบสั่งซื้อ</span></div>
           <pre id="orderMessageText"></pre>
+          <div class="modal-actions">
+            <button class="btn-secondary" id="copyMsgBtn">📋 Copy</button>
+          </div>
           <div id="promptpayPreview" class="promptpay-preview hidden">
             <small>QR PromptPay</small>
             <img id="promptpayImg" alt="PromptPay QR">
           </div>
           <div class="modal-actions">
-            <button class="btn-secondary" id="copyMsgBtn">📋 Copy</button>
-            <button class="btn-secondary" id="downloadMsgBtn">⬇️ ดาวน์โหลด</button>
             <button class="btn-secondary" id="shareMsgBtn">📤 แชร์</button>
             <button class="btn-primary" id="closeMsgBtn">เสร็จสิ้น</button>
           </div>
