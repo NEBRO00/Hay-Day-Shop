@@ -379,9 +379,10 @@ function addToCart(productId) {
   if (!product) return;
   const existing = state.cart.find(c => c.productId === productId);
   const inCartQty = existing ? existing.qty : 0;
-  if (inCartQty + 1 > product.stock) { toast('⚠️ สินค้าคงเหลือไม่พอ'); return; }
-  if (existing) existing.qty += 1;
-  else state.cart.push({ productId, name: product.name, image: product.image, photo: product.photo, price: product.price, qty: 1 });
+  const STEP = 10; // กดเพิ่ม 1 ครั้ง = 10 ชิ้นเสมอ
+  if (inCartQty + STEP > product.stock) { toast('⚠️ สินค้าคงเหลือไม่พอ'); return; }
+  if (existing) existing.qty += STEP;
+  else state.cart.push({ productId, name: product.name, image: product.image, photo: product.photo, price: product.price, qty: STEP });
   renderCart();
   toast(`เพิ่ม ${product.image || ''} ${product.name} ลงตะกร้าแล้ว`);
 }
@@ -391,8 +392,30 @@ function renderCart() {
   if (!state.cart.length) {
     list.innerHTML = `<p class="empty-hint">ยังไม่มีสินค้าในตะกร้า 🧺</p>`;
   } else {
-    list.innerHTML = state.cart.map((c, idx) => `
-      <div class="cart-row" data-idx="${idx}">
+    // ข้อ 2: จัดกลุ่มตามหมวดหมู่เดิมของร้าน (ติดกัน) แล้วในหมวดเดียวกันเรียงจากสั่งมาก -> น้อย
+    // เท่ากัน: คงลำดับเดิมของสินค้าตามที่ตั้งไว้ในร้าน แล้วตามด้วยชื่อ เพื่อให้เรียงสม่ำเสมอ
+    const products = load(DB_KEYS.products, []);
+    const categories = load(DB_KEYS.categories, []);
+    const catOrder = {};
+    categories.forEach((c, i) => { catOrder[c.id] = i; });
+    const productOrder = {};
+    products.forEach((p, i) => { productOrder[p.id] = i; });
+
+    const sortedCart = state.cart.slice().sort((a, b) => {
+      const prodA = products.find(p => p.id === a.productId);
+      const prodB = products.find(p => p.id === b.productId);
+      const catA = catOrder[prodA?.category] ?? 999;
+      const catB = catOrder[prodB?.category] ?? 999;
+      if (catA !== catB) return catA - catB;
+      if (b.qty !== a.qty) return b.qty - a.qty;
+      const origA = productOrder[a.productId] ?? 999;
+      const origB = productOrder[b.productId] ?? 999;
+      if (origA !== origB) return origA - origB;
+      return a.name.localeCompare(b.name, 'th');
+    });
+
+    list.innerHTML = sortedCart.map(c => `
+      <div class="cart-row" data-id="${c.productId}">
         ${thumbHtml(c, 'cart-thumb-img')}
         <div class="c-info">
           <div class="c-name">${esc(c.name)}</div>
@@ -405,20 +428,25 @@ function renderCart() {
         </div>
         <button class="remove-btn" aria-label="ลบออกจากตะกร้า">✕</button>
       </div>`).join('');
- 
+
     list.querySelectorAll('.cart-row').forEach(row => {
-      const idx = Number(row.dataset.idx);
-      row.querySelector('.qty-minus').addEventListener('click', () => changeQty(idx, -1));
-      row.querySelector('.qty-plus').addEventListener('click', () => changeQty(idx, 1));
+      const pid = row.dataset.id;
+      const idx = state.cart.findIndex(c => c.productId === pid);
+      row.querySelector('.qty-minus').addEventListener('click', () => changeQty(idx, -10));
+      row.querySelector('.qty-plus').addEventListener('click', () => changeQty(idx, 10));
       row.querySelector('.qty-input').addEventListener('change', e => setQty(idx, Number(e.target.value)));
       row.querySelector('.remove-btn').addEventListener('click', () => { state.cart.splice(idx, 1); renderCart(); });
     });
   }
- 
+
+  // ข้อ 3: สรุปท้ายรายการ 2 บรรทัด — "รวมทั้งหมด X รายการ | Y ชิ้น" และ "ยอดรวม Z บาท"
+  const totalLines = state.cart.length;
   const totalItems = state.cart.reduce((s, c) => s + c.qty, 0);
   const totalPrice = state.cart.reduce((s, c) => s + c.qty * c.price, 0);
+  document.getElementById('cartTotalLines').textContent = totalLines;
   document.getElementById('cartTotalItems').textContent = totalItems;
-  document.getElementById('cartTotalPrice').textContent = money(totalPrice);
+  document.getElementById('cartTotalPrice').textContent =
+    totalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
  
 function changeQty(idx, delta) { setQty(idx, state.cart[idx].qty + delta); }
