@@ -382,7 +382,7 @@ function addToCart(productId) {
   const STEP = 10; // กดเพิ่ม 1 ครั้ง = 10 ชิ้นเสมอ
   if (inCartQty + STEP > product.stock) { toast('⚠️ สินค้าคงเหลือไม่พอ'); return; }
   if (existing) existing.qty += STEP;
-  else state.cart.push({ productId, name: product.name, image: product.image, photo: product.photo, price: product.price, qty: STEP });
+  else state.cart.push({ productId, name: product.name, image: product.image, photo: product.photo, price: product.price, category: product.category, qty: STEP });
   renderCart();
   toast(`เพิ่ม ${product.image || ''} ${product.name} ลงตะกร้าแล้ว`);
 }
@@ -538,7 +538,7 @@ function confirmOrder() {
   save(DB_KEYS.customers, customers);
  
   const products = load(DB_KEYS.products, []);
-  const items = state.cart.map(c => ({ productId: c.productId, name: c.name, image: c.image, photo: c.photo, price: c.price, qty: c.qty }));
+  const items = state.cart.map(c => ({ productId: c.productId, name: c.name, image: c.image, photo: c.photo, price: c.price, category: c.category, qty: c.qty }));
   items.forEach(it => {
     const p = products.find(p => p.id === it.productId);
     if (p) p.stock = Math.max(0, p.stock - it.qty);
@@ -572,9 +572,29 @@ function buildOrderMessageText(order) {
   lines.push(`แท็กฟาร์ม : ${order.farmTag || '-'}`);
   lines.push('====================');
   lines.push('รายการสินค้า');
-  order.items.forEach(it => lines.push(`${textGlyph(it)} ${it.name} x${it.qty}`));
+
+  const categories = load(DB_KEYS.categories, []);
+  const catOrder = {};
+  categories.forEach((c, i) => { catOrder[c.id] = i; });
+
+  const groups = {};
+  order.items.forEach(it => {
+    const key = it.category || '__none__';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(it);
+  });
+
+  const groupKeys = Object.keys(groups).sort((a, b) => (catOrder[a] ?? 999) - (catOrder[b] ?? 999));
+
+  groupKeys.forEach(key => {
+    const catName = key === '__none__' ? null : (categoryById(key)?.name || null);
+    if (catName) lines.push(`${catName} :`);
+    const sortedItems = groups[key].slice().sort((a, b) => b.qty - a.qty);
+    sortedItems.forEach(it => lines.push(`${textGlyph(it)} ${it.name} x${it.qty}`));
+  });
+
   lines.push('====================');
-  lines.push(`รวมทั้งหมด ${order.totalItems} ชิ้น`);
+  lines.push(`รวมทั้งหมด ${order.totalItems} ชิ้น  ${order.items.length} รายการ`);
   lines.push(`ยอดรวม ${order.totalPrice.toLocaleString('th-TH')} บาท`);
   lines.push('');
   lines.push(`🗓️ ${fmtDateTime(order.createdAt)}`);
