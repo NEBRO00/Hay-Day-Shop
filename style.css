@@ -241,14 +241,8 @@ body.dark .topbar h1 { color: var(--sun); }
 .signpost-btn { cursor: pointer; font-family: inherit; }
 .signpost-btn:hover { filter: brightness(1.08); }
 .signpost-btn:active { transform: rotate(-0.6deg) translateY(1px); }
-.upgrade-cat-btn {
-  padding: 7px 16px; border-radius: 8px; cursor: pointer;
-  border: 3px solid var(--wood-deep); background: var(--wood); color: var(--wood-dark);
-  font-family: var(--font-display); font-size: 15px; font-weight: 600;
-  box-shadow: var(--cream);
-}
-.upgrade-cat-btn:hover { filter: brightness(0.97); }
-.upgrade-cat-btn.active { background: var(--sun, #f2b134); }
+/* ปุ่มที่กำลังเลือกอยู่ — เน้นด้วยวงแหวนสีเหลือง ส่วนหน้าตาปุ่มเหมือนกันทุกอย่าง */
+.signpost-btn.active { outline: 3px solid var(--sun, #f2b134); outline-offset: 2px; }
 
 /* ===== CARDS ===== */
 .card {

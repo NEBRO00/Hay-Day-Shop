@@ -324,7 +324,8 @@ function renderPosHead() {
   const btn = document.getElementById('upgradeCatBtn');
   btn.classList.toggle('hidden', !up);
   btn.classList.toggle('active', inUpgrade);
-  if (up) btn.textContent = `${up.emoji} ${up.name}`;
+  if (up) btn.innerHTML = `<span>${esc(up.emoji)} ${esc(up.name)}</span>`;
+  document.getElementById('posBackBtn').classList.toggle('active', !inUpgrade);
   document.getElementById('posCategoryFilter').classList.toggle('hidden', inUpgrade);
   document.getElementById('catChips').classList.toggle('hidden', inUpgrade);
 }
