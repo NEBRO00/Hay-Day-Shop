@@ -236,8 +236,12 @@ body.dark .topbar h1 { color: var(--sun); }
 .signpost span { font-size: 19px; }
 .signpost.small { padding: 7px 16px; transform: rotate(-0.6deg); margin-bottom: 12px; }
 .signpost.small span { font-size: 15px; }
-.pos-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.pos-head .signpost.small { margin-bottom: 0; }
+.pos-head {
+  display: grid; grid-auto-flow: column; justify-content: start; align-items: stretch; gap: 12px;
+  grid-auto-columns: min(210px, calc(50% - 6px)); margin-bottom: 12px;
+}
+.pos-head .signpost.small { margin: 0; display: block; width: 100%; text-align: center; }
+.pos-head .signpost.small span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .signpost-btn { cursor: pointer; font-family: inherit; }
 .signpost-btn:hover { filter: brightness(1.08); }
 .signpost-btn:active { transform: rotate(-0.6deg) translateY(1px); }
