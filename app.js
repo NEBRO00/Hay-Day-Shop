@@ -119,7 +119,8 @@ const state = {
   cart: [],                 // [{productId, name, image, price, qty}]
   view: 'dashboard',
   posCategoryFilter: '',
-  posMode: 'normal',        // 'normal' | 'upgrade' (หมวดพิเศษ ของอัพเกรด)
+  posSepCat: null,          // id ของหมวด "โหมดแยก" ที่เปิดอยู่ (null = โหมดปกติ)
+  booking: { date: '', time: '' }, // วัน/เวลาที่วนเหรียญ (หมวดที่ติ๊ก "ต้องเลือกวัน/เวลา")
   posSearch: '',
   editingProductId: null,
   reportRange: 'day',
@@ -285,22 +286,28 @@ function renderBars(containerId, data) {
 /* =====================================================================
    POS — ขายสินค้า
 ===================================================================== */
-/* ---- หมวดพิเศษ "ของอัพเกรด" ---- */
+/* ---- หมวด "โหมดแยก" (มีปุ่มของตัวเอง, กดทีละ 1 ชิ้น, ไม่ตัดสต็อก) ----
+   ตั้งค่าที่หน้าตั้งค่า: โหมดแยก / อยู่ใน "เพิ่มเติม" / ต้องเลือกวัน/เวลา */
 const UPGRADE_CAT_ID = 'cat_upgrade_special';
-function isUpgradeCat(catId) {
-  const c = load(DB_KEYS.categories, []).find(x => x.id === catId);
-  return !!(c && c.special === 'upgrade');
+function isSeparateCat(catId) { const c = categoryById(catId); return !!(c && c.separate); }
+function isBookingCat(catId) { const c = categoryById(catId); return !!(c && c.separate && c.booking); }
+function getSeparateCats() { return load(DB_KEYS.categories, []).filter(c => c.separate); }
+
+// ย้ายข้อมูลเก่า (special:'upgrade') มาเป็น separate:true
+function normalizeCategories() {
+  const cats = load(DB_KEYS.categories, []);
+  let changed = false;
+  cats.forEach(c => { if (c.special === 'upgrade') { c.separate = true; delete c.special; changed = true; } });
+  if (changed) save(DB_KEYS.categories, cats);
 }
-function getUpgradeCat() {
-  return load(DB_KEYS.categories, []).find(c => c.special === 'upgrade') || null;
-}
-// สร้างหมวดนี้ให้ครั้งเดียว (หลังจากนั้นแอดมินลบ/เปลี่ยนชื่อได้อิสระ ไม่สร้างซ้ำ)
+// สร้างหมวดของอัพเกรดให้ครั้งเดียว (หลังจากนั้นแอดมินลบ/เปลี่ยนชื่อได้อิสระ ไม่สร้างซ้ำ)
 function ensureUpgradeCategory() {
+  normalizeCategories();
   const settings = load(DB_KEYS.settings, {});
   if (settings.upgradeCatInit) return;
   const cats = load(DB_KEYS.categories, []);
-  if (!cats.some(c => c.special === 'upgrade')) {
-    cats.push({ id: UPGRADE_CAT_ID, emoji: '⚒️', name: 'ของอัพเกรด', special: 'upgrade' });
+  if (!cats.some(c => c.id === UPGRADE_CAT_ID)) {
+    cats.push({ id: UPGRADE_CAT_ID, emoji: '⚒️', name: 'ของอัพเกรด', separate: true });
     save(DB_KEYS.categories, cats);
   }
   settings.upgradeCatInit = true;
@@ -308,8 +315,8 @@ function ensureUpgradeCategory() {
 }
 
 function renderPOS() {
-  // ถ้าหมวดพิเศษถูกลบไปแล้ว ให้กลับโหมดปกติ
-  if (state.posMode === 'upgrade' && !getUpgradeCat()) state.posMode = 'normal';
+  // ถ้าหมวดโหมดแยกถูกลบ/ปิดไปแล้ว ให้กลับโหมดปกติ
+  if (state.posSepCat && !isSeparateCat(state.posSepCat)) state.posSepCat = null;
   renderPosHead();
   renderCategoryChips();
   populateCategorySelect(document.getElementById('posCategoryFilter'), true, true);
@@ -317,33 +324,73 @@ function renderPOS() {
   renderCart();
 }
 
-// หัวข้อ "เลือกสินค้า" (กดเพื่อกลับ) + ปุ่ม "ของอัพเกรด" + ซ่อน/แสดงหมวดอื่นตามโหมด
+// แถวปุ่มหมวด: "ขนม&วัตถุดิบ" (กลับหน้าปกติ) + ปุ่มหมวดโหมดแยกหลัก + "เพิ่มเติม ▾"
 function renderPosHead() {
-  const up = getUpgradeCat();
-  const inUpgrade = state.posMode === 'upgrade';
-  const btn = document.getElementById('upgradeCatBtn');
-  btn.classList.toggle('hidden', !up);
-  btn.classList.toggle('active', inUpgrade);
-  if (up) btn.innerHTML = `<span>${esc(up.emoji)} ${esc(up.name)}</span>`;
-  document.getElementById('posBackBtn').classList.toggle('active', !inUpgrade);
-  document.getElementById('posCategoryFilter').classList.toggle('hidden', inUpgrade);
-  document.getElementById('catChips').classList.toggle('hidden', inUpgrade);
+  const seps = getSeparateCats();
+  const main = seps.filter(c => !c.more);
+  const more = seps.filter(c => c.more);
+  const act = state.posSepCat;
+  const btn = (c) => `<button type="button" class="signpost small signpost-btn ${act === c.id ? 'active' : ''}" data-sep="${c.id}"><span>${esc(c.emoji)} ${esc(c.name)}</span></button>`;
+  const wrap = document.getElementById('posCatButtons');
+  wrap.innerHTML = main.map(btn).join('') +
+    (more.length ? `<button type="button" class="signpost small signpost-btn ${more.some(c => c.id === act) ? 'active' : ''}" id="posMoreBtn"><span>เพิ่มเติม ▾</span></button>` : '');
+  wrap.querySelectorAll('[data-sep]').forEach(b => b.addEventListener('click', () => enterSepMode(b.dataset.sep)));
+  const moreBtn = document.getElementById('posMoreBtn');
+  const menu = document.getElementById('posMoreMenu');
+  if (moreBtn) moreBtn.addEventListener('click', () => menu.classList.toggle('hidden'));
+  menu.innerHTML = more.map(c => `<button type="button" class="more-item ${act === c.id ? 'active' : ''}" data-sep="${c.id}">${esc(c.emoji)} ${esc(c.name)}</button>`).join('');
+  menu.querySelectorAll('[data-sep]').forEach(b => b.addEventListener('click', () => enterSepMode(b.dataset.sep)));
+  if (!more.length) menu.classList.add('hidden');
+
+  document.getElementById('posBackBtn').classList.toggle('active', !act);
+  document.getElementById('posCategoryFilter').classList.toggle('hidden', !!act);
+  document.getElementById('catChips').classList.toggle('hidden', !!act);
+  const ac = act ? categoryById(act) : null;
+  const title = document.getElementById('posModeTitle');
+  title.classList.toggle('hidden', !ac);
+  if (ac) title.textContent = `${ac.emoji} ${ac.name}`;
 }
 
-function enterUpgradeMode() {
-  if (!getUpgradeCat()) return;
-  state.posMode = 'upgrade';
+function enterSepMode(catId) {
+  if (!isSeparateCat(catId)) return;
+  state.posSepCat = catId;
   state.posCategoryFilter = '';
+  document.getElementById('posMoreMenu').classList.add('hidden');
   renderPOS();
 }
-function exitUpgradeMode() {
-  state.posMode = 'normal';
+function exitSepMode() {
+  state.posSepCat = null;
   state.posCategoryFilter = '';
+  document.getElementById('posMoreMenu').classList.add('hidden');
   renderPOS();
+}
+
+/* ---- วัน/เวลาที่วนเหรียญ (หมวดที่ติ๊ก "ต้องเลือกวัน/เวลา") ---- */
+function fmtBooking(b) {
+  if (!b || !b.date) return '';
+  const d = new Date(b.date + 'T00:00:00');
+  const day = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  return `${day}${b.time ? ' ' + b.time : ''}`;
+}
+function renderBookingBoxes() {
+  const needsCart = state.cart.some(c => isBookingCat(c.category));
+  const needsPos = !!(state.posSepCat && isBookingCat(state.posSepCat));
+  [['bookingBoxCart', needsCart], ['bookingBoxPos', needsPos]].forEach(([id, show]) => {
+    const box = document.getElementById(id);
+    box.classList.toggle('hidden', !show);
+    if (!show) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="booking-title">🗓️ เลือกวัน/เวลาที่วนเหรียญ</div>
+      <div class="booking-row">
+        <input type="date" class="booking-date" value="${esc(state.booking.date)}">
+        <input type="time" class="booking-time" value="${esc(state.booking.time)}">
+      </div>`;
+    box.querySelector('.booking-date').addEventListener('change', e => { state.booking.date = e.target.value; renderBookingBoxes(); });
+    box.querySelector('.booking-time').addEventListener('change', e => { state.booking.time = e.target.value; renderBookingBoxes(); });
+  });
 }
  
 function renderCategoryChips() {
-  const cats = load(DB_KEYS.categories, []).filter(c => c.special !== 'upgrade');
+  const cats = load(DB_KEYS.categories, []).filter(c => !c.separate);
   const wrap = document.getElementById('catChips');
   wrap.innerHTML = `<button class="chip ${state.posCategoryFilter === '' ? 'active' : ''}" data-cat="">ทั้งหมด</button>` +
     cats.map(c => `<button class="chip ${state.posCategoryFilter === c.id ? 'active' : ''}" data-cat="${c.id}">${c.emoji} ${esc(c.name)}</button>`).join('');
@@ -357,15 +404,14 @@ function renderCategoryChips() {
 }
  
 function populateCategorySelect(select, withAll, excludeSpecial) {
-  const cats = load(DB_KEYS.categories, []).filter(c => !(excludeSpecial && c.special === 'upgrade'));
+  const cats = load(DB_KEYS.categories, []).filter(c => !(excludeSpecial && c.separate));
   const current = select.value;
   select.innerHTML = (withAll ? `<option value="">ทุกหมวดหมู่</option>` : '') +
     cats.map(c => `<option value="${c.id}">${c.emoji} ${esc(c.name)}</option>`).join('');
   if (current) select.value = current;
 }
  
-document.getElementById('posBackBtn').addEventListener('click', exitUpgradeMode);
-document.getElementById('upgradeCatBtn').addEventListener('click', enterUpgradeMode);
+document.getElementById('posBackBtn').addEventListener('click', exitSepMode);
 
 document.getElementById('posSearch').addEventListener('input', e => {
   state.posSearch = e.target.value.trim().toLowerCase();
@@ -396,12 +442,12 @@ function renderPosProducts() {
   categories.forEach((c, i) => { catOrder[c.id] = i; });
   const salesMap = getProductSalesMap();
 
-  const upCat = getUpgradeCat();
-  const inUpgrade = state.posMode === 'upgrade' && upCat;
+  const sepIds = new Set(categories.filter(c => c.separate).map(c => c.id));
+  const act = state.posSepCat;
   let list = products.filter(p =>
-    (inUpgrade
-      ? p.category === upCat.id
-      : (!upCat || p.category !== upCat.id) && (!state.posCategoryFilter || p.category === state.posCategoryFilter)) &&
+    (act
+      ? p.category === act
+      : !sepIds.has(p.category) && (!state.posCategoryFilter || p.category === state.posCategoryFilter)) &&
     (!state.posSearch || p.name.toLowerCase().includes(state.posSearch))
   );
 
@@ -417,13 +463,14 @@ function renderPosProducts() {
   const grid = document.getElementById('posProductGrid');
   grid.innerHTML = list.length ? list.map(p => {
     const cat = categoryById(p.category);
-    const out = p.stock <= 0;
+    const isSep = sepIds.has(p.category);
+    const out = !isSep && p.stock <= 0;
     return `
     <div class="product-card ${out ? 'out' : ''}" data-id="${p.id}" title="${out ? 'สินค้าหมด' : 'เพิ่มลงตะกร้า'}">
       ${thumbHtml(p, 'prod-thumb-img')}
       <span class="p-name">${esc(p.name)}</span>
       <span class="p-price">${money(p.price)}</span>
-      <span class="p-stock">${out ? 'สินค้าหมด' : `คงเหลือ ${p.stock}`} · ${cat ? cat.emoji : ''}</span>
+      <span class="p-stock">${isSep ? '' : (out ? 'สินค้าหมด' : `คงเหลือ ${p.stock} · `)}${cat ? cat.emoji : ''}</span>
     </div>`;
   }).join('') : `<p class="empty-hint">ไม่พบสินค้า</p>`;
  
@@ -432,7 +479,7 @@ function renderPosProducts() {
   });
 }
  
-function stepForCategory(catId) { return isUpgradeCat(catId) ? 1 : 10; }
+function stepForCategory(catId) { return isSeparateCat(catId) ? 1 : 10; }
 
 function addToCart(productId) {
   const product = load(DB_KEYS.products, []).find(p => p.id === productId);
@@ -440,7 +487,7 @@ function addToCart(productId) {
   const existing = state.cart.find(c => c.productId === productId);
   const inCartQty = existing ? existing.qty : 0;
   const STEP = stepForCategory(product.category); // ปกติกดเพิ่ม 1 ครั้ง = 10 ชิ้น / ของอัพเกรด = 1 ชิ้น
-  if (inCartQty + STEP > product.stock) { toast('⚠️ สินค้าคงเหลือไม่พอ'); return; }
+  if (!isSeparateCat(product.category) && inCartQty + STEP > product.stock) { toast('⚠️ สินค้าคงเหลือไม่พอ'); return; }
   if (existing) existing.qty += STEP;
   else state.cart.push({ productId, name: product.name, image: product.image, photo: product.photo, price: product.price, category: product.category, qty: STEP });
   renderCart();
@@ -508,13 +555,14 @@ function renderCart() {
   document.getElementById('cartTotalItems').textContent = totalItems;
   document.getElementById('cartTotalPrice').textContent =
     totalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  renderBookingBoxes();
 }
  
 function changeQty(idx, delta) { setQty(idx, state.cart[idx].qty + delta); }
 function setQty(idx, qty) {
   const item = state.cart[idx];
   const product = load(DB_KEYS.products, []).find(p => p.id === item.productId);
-  const max = product ? product.stock : 9999;
+  const max = (product && !isSeparateCat(product.category)) ? product.stock : 9999;
   if (qty < 1) { state.cart.splice(idx, 1); renderCart(); return; }
   if (qty > max) { toast('⚠️ สินค้าคงเหลือไม่พอ'); qty = max; }
   item.qty = qty;
@@ -577,6 +625,8 @@ function confirmOrder() {
   const name = document.getElementById('custName').value.trim();
   if (!name) { toast('⚠️ กรุณากรอกชื่อลูกค้า'); custNameInput.focus(); return; }
   if (!state.cart.length) { toast('⚠️ ตะกร้าสินค้าว่างเปล่า'); return; }
+  const needsBooking = state.cart.some(c => isBookingCat(c.category));
+  if (needsBooking && (!state.booking.date || !state.booking.time)) { toast('⚠️ กรุณาเลือกวัน/เวลาที่วนเหรียญ'); return; }
  
   const farmTag = document.getElementById('custTag').value.trim();
   const phoneInput = document.getElementById('custPhone');
@@ -602,7 +652,7 @@ function confirmOrder() {
   const items = state.cart.map(c => ({ productId: c.productId, name: c.name, image: c.image, photo: c.photo, price: c.price, category: c.category, qty: c.qty }));
   items.forEach(it => {
     const p = products.find(p => p.id === it.productId);
-    if (p) p.stock = Math.max(0, p.stock - it.qty);
+    if (p && !isSeparateCat(p.category)) p.stock = Math.max(0, p.stock - it.qty);
   });
   save(DB_KEYS.products, products);
  
@@ -613,6 +663,7 @@ function confirmOrder() {
     id: uid('o'), customerId: customer.id, customerName: customer.name, farmTag: customer.farmTag,
     items, totalItems, totalPrice, status: 'รอชำระ', createdAt: new Date().toISOString(),
   };
+  if (needsBooking) order.booking = { date: state.booking.date, time: state.booking.time };
   const orders = load(DB_KEYS.orders, []);
   orders.push(order);
   save(DB_KEYS.orders, orders);
@@ -620,6 +671,7 @@ function confirmOrder() {
   showOrderMessage(order);
  
   state.cart = [];
+  state.booking = { date: '', time: '' };
   renderCart();
   document.getElementById('custAutofill').innerHTML = '';
   document.getElementById('custHistoryHint').innerHTML = '';
@@ -648,10 +700,12 @@ function buildOrderMessageText(order) {
   const groupKeys = Object.keys(groups).sort((a, b) => (catOrder[a] ?? 999) - (catOrder[b] ?? 999));
 
   groupKeys.forEach(key => {
-    const catName = key === '__none__' ? null : (categoryById(key)?.name || null);
+    const cat = key === '__none__' ? null : categoryById(key);
+    const catName = cat ? (cat.summaryTitle || cat.name) : null;
     if (catName) lines.push(`${catName} :`);
     const sortedItems = groups[key].slice().sort((a, b) => b.qty - a.qty);
     sortedItems.forEach(it => lines.push(`${textGlyph(it)} ${it.name} x${it.qty}`));
+    if (cat && cat.separate && cat.booking && order.booking) lines.push(`🗓️ เวลาวน : ${fmtBooking(order.booking)}`);
   });
 
   lines.push('====================');
@@ -746,6 +800,7 @@ function showOrderDetail(orderId) {
       <thead><tr><th></th><th>สินค้า</th><th>จำนวน</th><th>ราคา/ชิ้น</th><th>รวม</th></tr></thead>
       <tbody>${o.items.map(it => `<tr><td>${thumbHtml(it, 'table-thumb-img')}</td><td>${esc(it.name)}</td><td>${it.qty}</td><td>${money(it.price)}</td><td>${money(it.qty * it.price)}</td></tr>`).join('')}</tbody>
     </table></div>
+    ${o.booking ? `<p><strong>🗓️ เวลาวนเหรียญ:</strong> ${esc(fmtBooking(o.booking))}</p>` : ''}
     <p style="text-align:right;margin-top:10px"><strong>รวมทั้งหมด ${o.totalItems} ชิ้น — ${money(o.totalPrice)}</strong></p>`;
   document.getElementById('orderDetailBackdrop').classList.remove('hidden');
 }
@@ -808,6 +863,7 @@ document.getElementById('closeCustomerDetailBtn').addEventListener('click', () =
 ===================================================================== */
 function renderProductsAdmin() {
   populateCategorySelect(document.getElementById('prodCategory'), false);
+  populateCategorySelect(document.getElementById('importCategory'), false);
   populateCategorySelect(document.getElementById('adminCategoryFilter'), true);
   renderProductsTable();
 }
@@ -830,7 +886,7 @@ function renderProductsTable() {
       <td>${esc(p.name)}</td>
       <td>${cat ? `${cat.emoji} ${esc(cat.name)}` : '-'}</td>
       <td>${money(p.price)}</td>
-      <td>${p.stock}</td>
+      <td>${isSeparateCat(p.category) ? 'ไม่จำกัด' : p.stock}</td>
       <td>
         <button class="row-btn" data-edit="${p.id}">แก้ไข</button>
         <button class="row-btn danger" data-del="${p.id}">ลบ</button>
@@ -900,7 +956,8 @@ document.getElementById('saveProductBtn').addEventListener('click', async () => 
   const name = document.getElementById('prodName').value.trim();
   const price = parseFloat(document.getElementById('prodPrice').value);
   const category = document.getElementById('prodCategory').value;
-  const stock = parseInt(document.getElementById('prodStock').value, 10);
+  let stock = parseInt(document.getElementById('prodStock').value, 10);
+  if (isNaN(stock) && isSeparateCat(category)) stock = 0; // หมวดโหมดแยกไม่ตัดสต็อก
  
   if (!name) { toast('⚠️ กรุณากรอกชื่อสินค้า'); return; }
   if (isNaN(price) || price < 0) { toast('⚠️ ราคาไม่ถูกต้อง'); return; }
@@ -923,6 +980,41 @@ document.getElementById('saveProductBtn').addEventListener('click', async () => 
 });
  
 document.getElementById('cancelEditProductBtn').addEventListener('click', resetProductForm);
+
+/* ---- นำเข้าหลายรายการ: วางข้อความทีละบรรทัด "ชื่อสินค้า ราคา" ---- */
+function parseImportLines(text) {
+  const out = [];
+  text.split(/\r?\n/).forEach(raw => {
+    const line = raw.replace(/^[\s\-•*·]+/, '').replace(/฿|บาท/g, '').trim();
+    const m = line.match(/^(.*\S)\s+(\d+(?:\.\d+)?)\s*$/);
+    if (m) out.push({ name: m[1].trim(), price: parseFloat(m[2]) });
+  });
+  return out;
+}
+// เพิ่มสินค้าที่ยังไม่มี (เทียบจากชื่อ + หมวด) คืนค่า {added, skipped}
+function addProductsBulk(products, categoryId, items, stock) {
+  let added = 0, skipped = 0;
+  const unlimited = isSeparateCat(categoryId);
+  items.forEach(it => {
+    if (products.some(p => p.category === categoryId && p.name === it.name)) { skipped++; return; }
+    products.push({ id: uid('p'), image: '📦', name: it.name, price: it.price, category: categoryId, stock: unlimited ? 0 : stock });
+    added++;
+  });
+  return { added, skipped };
+}
+document.getElementById('importBtn').addEventListener('click', async () => {
+  const categoryId = document.getElementById('importCategory').value;
+  const items = parseImportLines(document.getElementById('importText').value);
+  const stock = parseInt(document.getElementById('importStock').value, 10);
+  if (!categoryId) { toast('⚠️ กรุณาเลือกหมวดหมู่'); return; }
+  if (!items.length) { toast('⚠️ ไม่พบรายการ (รูปแบบ: ชื่อสินค้า ราคา ทีละบรรทัด)'); return; }
+  const products = await loadFresh(DB_KEYS.products, []);
+  const { added, skipped } = addProductsBulk(products, categoryId, items, isNaN(stock) || stock < 0 ? 100 : stock);
+  save(DB_KEYS.products, products);
+  document.getElementById('importText').value = '';
+  renderProductsTable();
+  toast(`✅ เพิ่ม ${added} รายการ${skipped ? ` (ข้ามที่ซ้ำ ${skipped})` : ''}`);
+});
 function resetProductForm() {
   document.getElementById('prodId').value = '';
   document.getElementById('prodImage').value = '';
@@ -1043,12 +1135,26 @@ function renderSettings() {
  
   const cats = load(DB_KEYS.categories, []);
   document.getElementById('settingsCatList').innerHTML = cats.map(c => `
-    <span class="chip" style="cursor:default">${c.emoji} <span class="cat-chip-name" data-rename="${c.id}" title="กดเพื่อเปลี่ยนชื่อ" style="cursor:pointer">${esc(c.name)}</span> <span class="cat-chip-x" data-del="${c.id}">✕</span></span>`).join('');
+    <div class="cat-row">
+      <div class="cat-row-main">
+        <span>${c.emoji} <span class="cat-chip-name" data-rename="${c.id}" title="กดเพื่อเปลี่ยนชื่อ" style="cursor:pointer">${esc(c.name)}</span></span>
+        <span class="cat-chip-x" data-del="${c.id}" title="ลบหมวดหมู่">✕</span>
+      </div>
+      <div class="cat-row-flags">
+        <label><input type="checkbox" data-flag="separate" data-id="${c.id}" ${c.separate ? 'checked' : ''}> โหมดแยก</label>
+        ${c.separate ? `
+        <label><input type="checkbox" data-flag="more" data-id="${c.id}" ${c.more ? 'checked' : ''}> อยู่ใน "เพิ่มเติม"</label>
+        <label><input type="checkbox" data-flag="booking" data-id="${c.id}" ${c.booking ? 'checked' : ''}> ต้องเลือกวัน/เวลา</label>` : ''}
+      </div>
+    </div>`).join('');
   document.querySelectorAll('#settingsCatList [data-rename]').forEach(x => {
     x.addEventListener('click', () => renameCategory(x.dataset.rename));
   });
   document.querySelectorAll('#settingsCatList [data-del]').forEach(x => {
     x.addEventListener('click', () => deleteCategory(x.dataset.del));
+  });
+  document.querySelectorAll('#settingsCatList [data-flag]').forEach(x => {
+    x.addEventListener('change', () => setCategoryFlag(x.dataset.id, x.dataset.flag, x.checked));
   });
  
   const settings = load(DB_KEYS.settings, {});
@@ -1101,6 +1207,17 @@ document.getElementById('addCatBtn').addEventListener('click', () => {
   renderSettings();
 });
  
+function setCategoryFlag(id, flag, value) {
+  const cats = load(DB_KEYS.categories, []);
+  const c = cats.find(x => x.id === id);
+  if (!c) return;
+  c[flag] = value;
+  if (flag === 'separate' && !value) { c.more = false; c.booking = false; }
+  save(DB_KEYS.categories, cats);
+  toast('💾 บันทึกการตั้งค่าหมวดหมู่แล้ว');
+  renderSettings();
+}
+
 function renameCategory(id) {
   const cats = load(DB_KEYS.categories, []);
   const c = cats.find(x => x.id === id);
@@ -1243,3 +1360,93 @@ window.addEventListener('db:error', e => {
     if (dbErrorEl) dbErrorEl.classList.remove('hidden');
   }
 })();
+
+
+/* ---- โหลดหมวด + รายการเริ่มต้น (กดปุ่มในหน้าตั้งค่า, ข้ามรายการที่มีแล้ว) ---- */
+const STARTER_PACK = [
+  { id: UPGRADE_CAT_ID, emoji: '⚒️', name: 'ของอัพเกรด', flags: { separate: true }, text: `
+อัพยุ้งฉาง 1 ชุด 89ชิ้น 9฿
+ขยายพื้นที่ 1 ชุด 89ชิ้น 12฿
+สลัก 5ชิ้น 1฿
+ไม้กระดาน 5ชิ้น 1฿
+เทป 5ชิ้น 1฿
+ตะปู 5ชิ้น 1฿
+ตะปูควง 5ชิ้น 1฿
+ไม้ฝา 5ชิ้น 1฿
+ฉโนด 5ชิ้น 1฿
+ค้อนไม้ 5ชิ้น 1฿
+หมุด 5ชิ้น 1฿
+อัพรถไฟแจ้งรายการในแชท 5ชิ้น 1฿
+ปิ่นโต โรงนา/ยุ้ง 7วัน 59฿
+ปิ่นโต ขยายพื้นที่ 7วัน 79฿` },
+  { id: 'cat_diamond', emoji: '💎', name: 'เติมเพชร&กดแพ็ค', flags: { separate: true }, text: `
+50 เพชร 34฿
+130 เพชร 84฿
+275 เพชร 169฿
+570 เพชร 329฿
+1500 เพชร 679฿
+4000 เพชร 1659฿` },
+  { id: 'cat_coin', emoji: '🪙', name: 'เติมเหรียญ', flags: { separate: true, more: true, booking: true, summaryTitle: 'จองวนเหรียญ' }, text: `
+เวล 11-20 1หมื่น 5฿
+เวล 11-20 5หมื่น 20฿
+เวล 11-20 1แสน 30฿
+เวล 21-39 1แสน 12฿
+เวล 21-39 5แสน 50฿
+เวล 21-39 1ล้าน 80฿
+เวล 40-58 1ล้าน 50฿
+เวล 40-58 3ล้าน 130฿
+เวล 40-58 5ล้าน 190฿
+เวล 59+ 1ล้าน 45฿` },
+  { id: 'cat_raw100', emoji: '🌾', name: 'วัตถุดิบเรทล้วน100', flags: { separate: true, more: true }, text: `
+หางกุ้ง 100ชิ้น 6฿
+ขน 100ชิ้น 6฿
+ขี้ผึ้ง 100ชิ้น 6฿
+ชีสแพะ 100ชิ้น 6฿
+ปลา 100ชิ้น 5฿
+ผ้าฝ้าย 100ชิ้น 5฿
+น้ำผึ้ง 100ชิ้น 5฿
+น้ำเชื่อม 100ชิ้น 5฿
+น้ำตาลทรายขาว 100ชิ้น 5฿
+น้ำตาลทรายแดง 100ชิ้น 5฿
+ชีส 100ชิ้น 5฿
+เนย 100ชิ้น 5฿
+ครีม 100ชิ้น 5฿
+พาสต้าสด 100ชิ้น 5฿
+ไข่ 100ชิ้น 5฿
+นม 100ชิ้น 5฿
+เบคอน 100ชิ้น 5฿
+ขนมปัง 100ชิ้น 5฿
+แพนเค้ก 100ชิ้น 5฿
+มะเขือเทศเผา 100ชิ้น 5฿
+ขนมปังข้าวโพด 100ชิ้น 5฿
+คุกกี้ 100ชิ้น 5฿
+อาหารสัตว์ สุ่มคละ 100ชิ้น 5฿` },
+  { id: 'cat_truckbill', emoji: '🚚', name: 'ส่งบิลรถกระบะ', flags: { separate: true, more: true }, text: `
+เวล7-80 100บิล 70฿
+เวล7-80 500บิล 350฿
+เวล7-80 1000บิล 650฿
+เวล80+ 100บิล 90฿
+เวล80+ 500บิล 450฿
+เวล80+ 1000บิล 800฿` },
+];
+
+async function loadStarterPack() {
+  const cats = await loadFresh(DB_KEYS.categories, []);
+  const products = await loadFresh(DB_KEYS.products, []);
+  let catsAdded = 0, prodAdded = 0, prodSkipped = 0;
+  STARTER_PACK.forEach(pack => {
+    if (!cats.some(c => c.id === pack.id)) {
+      cats.push({ id: pack.id, emoji: pack.emoji, name: pack.name, ...pack.flags });
+      catsAdded++;
+    }
+    const r = addProductsBulk(products, pack.id, parseImportLines(pack.text), 0);
+    prodAdded += r.added; prodSkipped += r.skipped;
+  });
+  save(DB_KEYS.categories, cats);
+  save(DB_KEYS.products, products);
+  toast(`✅ เพิ่มหมวด ${catsAdded} · สินค้า ${prodAdded}${prodSkipped ? ` (ข้ามที่มีแล้ว ${prodSkipped})` : ''}`);
+  renderSettings();
+}
+document.getElementById('loadStarterBtn').addEventListener('click', () => {
+  if (confirm('โหลดหมวด+รายการเริ่มต้น (เติมเพชร, เติมเหรียญ, วัตถุดิบเรทล้วน100, ส่งบิลรถกระบะ, ของอัพเกรด)?\nรายการที่มีอยู่แล้วจะไม่ถูกเพิ่มซ้ำ')) loadStarterPack();
+});

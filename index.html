@@ -150,8 +150,11 @@
           <div class="pos-left">
             <div class="pos-head">
               <button type="button" class="signpost small signpost-btn" id="posBackBtn" title="กลับไปเลือกสินค้าทั้งหมด"><span>🍪 ขนม&amp;วัตถุดิบ</span></button>
-              <button type="button" class="signpost small signpost-btn hidden" id="upgradeCatBtn"></button>
+              <span id="posCatButtons" class="contents"></span>
             </div>
+            <div class="pos-more-menu hidden" id="posMoreMenu"></div>
+            <div class="pos-mode-title hidden" id="posModeTitle"></div>
+            <div class="booking-box hidden" id="bookingBoxPos"></div>
             <div class="pos-toolbar">
               <input type="text" id="posSearch" placeholder="🔍 ค้นหาสินค้า...">
               <select id="posCategoryFilter"></select>
@@ -166,6 +169,7 @@
               <div class="cart-list" id="cartList">
                 <p class="empty-hint">ยังไม่มีสินค้าในตะกร้า 🧺</p>
               </div>
+              <div class="booking-box hidden" id="bookingBoxCart"></div>
               <div class="cart-totals">
                 <div class="cart-summary-line1">รวมทั้งหมด <strong id="cartTotalLines">0</strong> รายการ | <strong id="cartTotalItems">0</strong> ชิ้น</div>
                 <div class="cart-summary-line2">ยอดรวม <strong id="cartTotalPrice">0.00</strong> บาท</div>
@@ -272,6 +276,15 @@
           <p class="hint-text photo-note">💡 ลิขสิทธิ์รูปในเกม Hay Day เป็นของ Supercell เราจึงใส่ให้อัตโนมัติไม่ได้ — อัปโหลดรูปที่แคปจากเกมของคุณเองได้เลยที่นี่ ระบบจะใช้แทน emoji ทันที</p>
         </div>
 
+        <div class="card import-card">
+          <strong>📥 นำเข้าหลายรายการ</strong>
+          <p class="hint-text">วางข้อความทีละบรรทัด รูปแบบ <code>ชื่อสินค้า ราคา</code> เช่น <code>50 เพชร 34฿</code> (ตัด ฿ และ - นำหน้าให้เอง · ข้ามรายการที่ชื่อซ้ำในหมวดเดียวกัน)</p>
+          <label>หมวดหมู่<select id="importCategory"></select></label>
+          <label>จำนวนคงเหลือ (ใช้กับหมวดปกติ)<input type="number" id="importStock" value="100" min="0"></label>
+          <textarea id="importText" rows="6" placeholder="หางกุ้ง 100ชิ้น 6฿&#10;ปลา 100ชิ้น 5฿"></textarea>
+          <button class="btn-primary" id="importBtn" type="button">นำเข้า</button>
+        </div>
+
         <div class="pos-toolbar">
           <input type="text" id="adminProductSearch" placeholder="🔍 ค้นหาสินค้า...">
           <select id="adminCategoryFilter"></select>
@@ -359,7 +372,9 @@
             <input type="text" id="newCatName" placeholder="ชื่อหมวดหมู่ใหม่">
             <button class="btn-primary" id="addCatBtn">+ เพิ่มหมวดหมู่</button>
           </div>
-          <div class="cat-chips" id="settingsCatList"></div>
+          <div class="cat-list" id="settingsCatList"></div>
+          <p class="hint-text">☑ <strong>โหมดแยก</strong> = มีปุ่มของตัวเองหน้าเลือกสินค้า (ทีละ 1 ชิ้น ไม่ตัดสต็อก) · <strong>เพิ่มเติม</strong> = เก็บไว้ในเมนู "เพิ่มเติม ▾" · <strong>ต้องเลือกวัน/เวลา</strong> = ลูกค้าต้องระบุเวลาวนก่อนยืนยัน</p>
+          <button class="btn-secondary" id="loadStarterBtn" type="button">📥 โหลดหมวด+รายการเริ่มต้น (เพชร/เหรียญ/วัตถุดิบ/บิลรถ/อัพเกรด)</button>
         </div>
 
         <div class="card">

@@ -237,9 +237,10 @@ body.dark .topbar h1 { color: var(--sun); }
 .signpost.small { padding: 7px 16px; transform: rotate(-0.6deg); margin-bottom: 12px; }
 .signpost.small span { font-size: 15px; }
 .pos-head {
-  display: grid; grid-auto-flow: column; justify-content: start; align-items: stretch; gap: 12px;
-  grid-auto-columns: min(210px, calc(50% - 6px)); margin-bottom: 12px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 200px));
+  justify-content: start; align-items: stretch; gap: 12px; margin-bottom: 12px;
 }
+.pos-head .contents { display: contents; }
 .pos-head .signpost.small { margin: 0; display: block; width: 100%; text-align: center; }
 .pos-head .signpost.small span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .signpost-btn { cursor: pointer; font-family: inherit; }
@@ -501,3 +502,29 @@ body.dark .cart-totals .cart-summary-line2 { color: var(--sun); }
 }
 
 :focus-visible { outline: 3px solid var(--sun-deep); outline-offset: 2px; }
+
+/* ===== เมนู เพิ่มเติม / หัวข้อโหมดแยก / ฟอร์มเวลาวน ===== */
+.pos-more-menu {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px;
+  margin: 0 0 12px; padding: 10px; background: var(--cream); border: 2px solid var(--wood-deep); border-radius: 12px;
+}
+.more-item {
+  padding: 9px 10px; border-radius: 10px; border: 2px solid var(--line); background: var(--card-bg);
+  font-family: var(--font-display); font-size: 14px; color: var(--ink); cursor: pointer;
+}
+.more-item:hover { background: var(--cream-deep); }
+.more-item.active { border-color: var(--sun-deep); background: var(--sun); }
+.pos-mode-title { font-family: var(--font-display); font-size: 16px; color: var(--wood-dark); margin: 0 0 10px; }
+.booking-box {
+  margin: 0 0 12px; padding: 10px 12px; background: var(--cream); border: 2px dashed var(--sun-deep); border-radius: 12px;
+}
+.booking-title { font-family: var(--font-display); font-size: 14px; margin-bottom: 8px; color: var(--wood-dark); }
+.booking-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.booking-row input { flex: 1; min-width: 130px; padding: 8px 10px; border: 2px solid var(--line); border-radius: 10px; font-family: inherit; font-size: 15px; background: #fff; }
+.cat-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.cat-row { padding: 8px 12px; background: var(--cream); border: 2px solid var(--line); border-radius: 12px; }
+.cat-row-main { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--font-display); }
+.cat-row-flags { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: 13px; color: var(--sub-ink); }
+.cat-row-flags label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.import-card { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.import-card textarea { width: 100%; padding: 10px; border: 2px solid var(--line); border-radius: 10px; font-family: inherit; font-size: 14px; }
