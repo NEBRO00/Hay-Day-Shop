@@ -119,6 +119,7 @@ const state = {
   cart: [],                 // [{productId, name, image, price, qty}]
   view: 'dashboard',
   posCategoryFilter: '',
+  posMode: 'normal',        // 'normal' | 'upgrade' (หมวดพิเศษ ของอัพเกรด)
   posSearch: '',
   editingProductId: null,
   reportRange: 'day',
@@ -284,15 +285,64 @@ function renderBars(containerId, data) {
 /* =====================================================================
    POS — ขายสินค้า
 ===================================================================== */
+/* ---- หมวดพิเศษ "ของอัพเกรด" ---- */
+const UPGRADE_CAT_ID = 'cat_upgrade_special';
+function isUpgradeCat(catId) {
+  const c = load(DB_KEYS.categories, []).find(x => x.id === catId);
+  return !!(c && c.special === 'upgrade');
+}
+function getUpgradeCat() {
+  return load(DB_KEYS.categories, []).find(c => c.special === 'upgrade') || null;
+}
+// สร้างหมวดนี้ให้ครั้งเดียว (หลังจากนั้นแอดมินลบ/เปลี่ยนชื่อได้อิสระ ไม่สร้างซ้ำ)
+function ensureUpgradeCategory() {
+  const settings = load(DB_KEYS.settings, {});
+  if (settings.upgradeCatInit) return;
+  const cats = load(DB_KEYS.categories, []);
+  if (!cats.some(c => c.special === 'upgrade')) {
+    cats.push({ id: UPGRADE_CAT_ID, emoji: '⚒️', name: 'ของอัพเกรด', special: 'upgrade' });
+    save(DB_KEYS.categories, cats);
+  }
+  settings.upgradeCatInit = true;
+  save(DB_KEYS.settings, settings);
+}
+
 function renderPOS() {
+  // ถ้าหมวดพิเศษถูกลบไปแล้ว ให้กลับโหมดปกติ
+  if (state.posMode === 'upgrade' && !getUpgradeCat()) state.posMode = 'normal';
+  renderPosHead();
   renderCategoryChips();
-  populateCategorySelect(document.getElementById('posCategoryFilter'), true);
+  populateCategorySelect(document.getElementById('posCategoryFilter'), true, true);
   renderPosProducts();
   renderCart();
 }
+
+// หัวข้อ "เลือกสินค้า" (กดเพื่อกลับ) + ปุ่ม "ของอัพเกรด" + ซ่อน/แสดงหมวดอื่นตามโหมด
+function renderPosHead() {
+  const up = getUpgradeCat();
+  const inUpgrade = state.posMode === 'upgrade';
+  const btn = document.getElementById('upgradeCatBtn');
+  btn.classList.toggle('hidden', !up);
+  btn.classList.toggle('active', inUpgrade);
+  if (up) btn.textContent = `${up.emoji} ${up.name}`;
+  document.getElementById('posCategoryFilter').classList.toggle('hidden', inUpgrade);
+  document.getElementById('catChips').classList.toggle('hidden', inUpgrade);
+}
+
+function enterUpgradeMode() {
+  if (!getUpgradeCat()) return;
+  state.posMode = 'upgrade';
+  state.posCategoryFilter = '';
+  renderPOS();
+}
+function exitUpgradeMode() {
+  state.posMode = 'normal';
+  state.posCategoryFilter = '';
+  renderPOS();
+}
  
 function renderCategoryChips() {
-  const cats = load(DB_KEYS.categories, []);
+  const cats = load(DB_KEYS.categories, []).filter(c => c.special !== 'upgrade');
   const wrap = document.getElementById('catChips');
   wrap.innerHTML = `<button class="chip ${state.posCategoryFilter === '' ? 'active' : ''}" data-cat="">ทั้งหมด</button>` +
     cats.map(c => `<button class="chip ${state.posCategoryFilter === c.id ? 'active' : ''}" data-cat="${c.id}">${c.emoji} ${esc(c.name)}</button>`).join('');
@@ -305,14 +355,17 @@ function renderCategoryChips() {
   });
 }
  
-function populateCategorySelect(select, withAll) {
-  const cats = load(DB_KEYS.categories, []);
+function populateCategorySelect(select, withAll, excludeSpecial) {
+  const cats = load(DB_KEYS.categories, []).filter(c => !(excludeSpecial && c.special === 'upgrade'));
   const current = select.value;
   select.innerHTML = (withAll ? `<option value="">ทุกหมวดหมู่</option>` : '') +
     cats.map(c => `<option value="${c.id}">${c.emoji} ${esc(c.name)}</option>`).join('');
   if (current) select.value = current;
 }
  
+document.getElementById('posBackBtn').addEventListener('click', exitUpgradeMode);
+document.getElementById('upgradeCatBtn').addEventListener('click', enterUpgradeMode);
+
 document.getElementById('posSearch').addEventListener('input', e => {
   state.posSearch = e.target.value.trim().toLowerCase();
   renderPosProducts();
@@ -342,8 +395,12 @@ function renderPosProducts() {
   categories.forEach((c, i) => { catOrder[c.id] = i; });
   const salesMap = getProductSalesMap();
 
+  const upCat = getUpgradeCat();
+  const inUpgrade = state.posMode === 'upgrade' && upCat;
   let list = products.filter(p =>
-    (!state.posCategoryFilter || p.category === state.posCategoryFilter) &&
+    (inUpgrade
+      ? p.category === upCat.id
+      : (!upCat || p.category !== upCat.id) && (!state.posCategoryFilter || p.category === state.posCategoryFilter)) &&
     (!state.posSearch || p.name.toLowerCase().includes(state.posSearch))
   );
 
@@ -374,12 +431,14 @@ function renderPosProducts() {
   });
 }
  
+function stepForCategory(catId) { return isUpgradeCat(catId) ? 1 : 10; }
+
 function addToCart(productId) {
   const product = load(DB_KEYS.products, []).find(p => p.id === productId);
   if (!product) return;
   const existing = state.cart.find(c => c.productId === productId);
   const inCartQty = existing ? existing.qty : 0;
-  const STEP = 10; // กดเพิ่ม 1 ครั้ง = 10 ชิ้นเสมอ
+  const STEP = stepForCategory(product.category); // ปกติกดเพิ่ม 1 ครั้ง = 10 ชิ้น / ของอัพเกรด = 1 ชิ้น
   if (inCartQty + STEP > product.stock) { toast('⚠️ สินค้าคงเหลือไม่พอ'); return; }
   if (existing) existing.qty += STEP;
   else state.cart.push({ productId, name: product.name, image: product.image, photo: product.photo, price: product.price, category: product.category, qty: STEP });
@@ -432,8 +491,9 @@ function renderCart() {
     list.querySelectorAll('.cart-row').forEach(row => {
       const pid = row.dataset.id;
       const idx = state.cart.findIndex(c => c.productId === pid);
-      row.querySelector('.qty-minus').addEventListener('click', () => changeQty(idx, -10));
-      row.querySelector('.qty-plus').addEventListener('click', () => changeQty(idx, 10));
+      const step = stepForCategory(state.cart[idx].category);
+      row.querySelector('.qty-minus').addEventListener('click', () => changeQty(idx, -step));
+      row.querySelector('.qty-plus').addEventListener('click', () => changeQty(idx, step));
       row.querySelector('.qty-input').addEventListener('change', e => setQty(idx, Number(e.target.value)));
       row.querySelector('.remove-btn').addEventListener('click', () => { state.cart.splice(idx, 1); renderCart(); });
     });
@@ -982,7 +1042,10 @@ function renderSettings() {
  
   const cats = load(DB_KEYS.categories, []);
   document.getElementById('settingsCatList').innerHTML = cats.map(c => `
-    <span class="chip" style="cursor:default">${c.emoji} ${esc(c.name)} <span class="cat-chip-x" data-del="${c.id}">✕</span></span>`).join('');
+    <span class="chip" style="cursor:default">${c.emoji} <span class="cat-chip-name" data-rename="${c.id}" title="กดเพื่อเปลี่ยนชื่อ" style="cursor:pointer">${esc(c.name)}</span> <span class="cat-chip-x" data-del="${c.id}">✕</span></span>`).join('');
+  document.querySelectorAll('#settingsCatList [data-rename]').forEach(x => {
+    x.addEventListener('click', () => renameCategory(x.dataset.rename));
+  });
   document.querySelectorAll('#settingsCatList [data-del]').forEach(x => {
     x.addEventListener('click', () => deleteCategory(x.dataset.del));
   });
@@ -1037,6 +1100,20 @@ document.getElementById('addCatBtn').addEventListener('click', () => {
   renderSettings();
 });
  
+function renameCategory(id) {
+  const cats = load(DB_KEYS.categories, []);
+  const c = cats.find(x => x.id === id);
+  if (!c) return;
+  const name = prompt('เปลี่ยนชื่อหมวดหมู่', c.name);
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) { toast('⚠️ ชื่อหมวดหมู่ต้องไม่ว่าง'); return; }
+  c.name = trimmed;
+  save(DB_KEYS.categories, cats);
+  toast('✅ เปลี่ยนชื่อหมวดหมู่แล้ว');
+  renderSettings();
+}
+
 function deleteCategory(id) {
   const products = load(DB_KEYS.products, []);
   if (products.some(p => p.category === id)) { toast('⚠️ มีสินค้าอยู่ในหมวดหมู่นี้ ลบไม่ได้'); return; }
@@ -1155,6 +1232,7 @@ window.addEventListener('db:error', e => {
   initTheme();
   try {
     await initDB();
+    ensureUpgradeCategory();
     if (dbLoadingEl) dbLoadingEl.classList.add('hidden');
     applyUnlockedUI(isAuthed());
     goToView('pos');

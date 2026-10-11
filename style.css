@@ -236,6 +236,19 @@ body.dark .topbar h1 { color: var(--sun); }
 .signpost span { font-size: 19px; }
 .signpost.small { padding: 7px 16px; transform: rotate(-0.6deg); margin-bottom: 12px; }
 .signpost.small span { font-size: 15px; }
+.pos-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.pos-head .signpost.small { margin-bottom: 0; }
+.signpost-btn { cursor: pointer; font-family: inherit; }
+.signpost-btn:hover { filter: brightness(1.08); }
+.signpost-btn:active { transform: rotate(-0.6deg) translateY(1px); }
+.upgrade-cat-btn {
+  padding: 7px 16px; border-radius: 8px; cursor: pointer;
+  border: 3px solid var(--wood-deep); background: var(--cream); color: var(--wood-dark);
+  font-family: var(--font-display); font-size: 15px; font-weight: 600;
+  box-shadow: var(--shadow);
+}
+.upgrade-cat-btn:hover { filter: brightness(0.97); }
+.upgrade-cat-btn.active { background: var(--sun, #f2b134); }
 
 /* ===== CARDS ===== */
 .card {
