@@ -37,10 +37,13 @@ function compressImageFile(file, maxDim = 900, quality = 0.85, mime = 'image/png
 
 // อัปโหลดไฟล์รูปที่บีบอัดแล้วขึ้น Supabase Storage แล้วคืน URL สาธารณะ
 // (เก็บแค่ URL สั้นๆ ไว้ในฐานข้อมูล แทนการฝังรูปทั้งก้อนเป็น base64 — กัน error 500 ตอนข้อมูลใหญ่เกิน)
-async function uploadProductPhoto(blob, mime = 'image/png') {
-  const ext = mime === 'image/png' ? 'png' : 'jpg';
+async function uploadProductPhoto(blob, mime = 'image/webp') {
+  // ใช้ชนิดไฟล์จริงของ blob (บางเบราว์เซอร์เช่น Safari เข้ารหัส WebP ไม่ได้ จะคืนเป็น PNG)
+  const realMime = (blob && blob.type) || mime;
+  const ext = realMime === 'image/webp' ? 'webp' : (realMime === 'image/png' ? 'png' : 'jpg');
   const path = `${dbUid('img')}.${ext}`;
-  const { error } = await supabaseClient.storage.from('product-photos').upload(path, blob, { contentType: mime, upsert: false });
+  // cacheControl 1 ปี: ชื่อไฟล์สุ่มใหม่ทุกครั้ง (ไม่ overwrite) เบราว์เซอร์/CDN จึงเก็บรูปไว้ ไม่โหลดซ้ำ → ลด Egress
+  const { error } = await supabaseClient.storage.from('product-photos').upload(path, blob, { contentType: realMime, cacheControl: '31536000', upsert: false });
   if (error) throw error;
   const { data } = supabaseClient.storage.from('product-photos').getPublicUrl(path);
   return data.publicUrl;
@@ -131,7 +134,7 @@ const state = {
 /* ---------------------- IMAGE HELPERS ---------------------- */
 // Returns HTML for a product/cart-item thumbnail: real photo if present, else emoji.
 function thumbHtml(item, cls) {
-  if (item && item.photo) return `<img class="${cls}" src="${item.photo}" alt="${esc(item.name || '')}">`;
+  if (item && item.photo) return `<img class="${cls}" src="${item.photo}" alt="${esc(item.name || '')}" loading="lazy" decoding="async">`;
   return `<span class="${cls === 'prod-thumb-img' ? 'p-emoji' : (cls === 'cart-thumb-img' ? 'c-emoji' : '')}">${(item && item.image) || '📦'}</span>`;
 }
 // Emoji/text-safe glyph for auto-generated text messages (can't embed photos in plain text).
@@ -926,8 +929,8 @@ document.getElementById('prodPhotoUpload').addEventListener('change', async e =>
   if (!file) return;
   toast('⏳ กำลังอัปโหลดรูป...');
   try {
-    const blob = await compressImageFile(file, 900, 0.85, 'image/png');
-    const url = await uploadProductPhoto(blob, 'image/png');
+    const blob = await compressImageFile(file, 800, 0.8, 'image/webp');
+    const url = await uploadProductPhoto(blob, 'image/webp');
     state.pendingProductPhoto = url;
     setProductPhotoPreview(url);
     toast('✅ อัปโหลดรูปสำเร็จ');
@@ -1159,7 +1162,7 @@ function renderSettings() {
  
   const settings = load(DB_KEYS.settings, {});
   const preview = document.getElementById('qrCurrentPreview');
-  preview.innerHTML = settings.promptpayQr ? `<img src="${settings.promptpayQr}" alt="PromptPay QR">` : `<p class="hint-text">ยังไม่มี QR</p>`;
+  preview.innerHTML = settings.promptpayQr ? `<img src="${settings.promptpayQr}" alt="PromptPay QR" loading="lazy">` : `<p class="hint-text">ยังไม่มี QR</p>`;
 }
  
 document.getElementById('changePasswordBtn').addEventListener('click', async () => {
